@@ -133,12 +133,24 @@ fi
 echo "    installed: $bin"
 
 # ---- PATH ----
+# Pick the rc file AND the line syntax for the user's login shell. fish uses a
+# different config location and its own PATH syntax (fish_add_path); the POSIX
+# `export PATH=...` line is silently ignored by fish.
 case "$SHELL" in
-  */zsh)  rc="$HOME/.zshrc" ;;
-  */bash) if [ "$os" = "darwin" ]; then rc="$HOME/.bash_profile"; else rc="$HOME/.bashrc"; fi ;;
-  *)      rc="$HOME/.profile" ;;
+  */fish)
+    rc="$HOME/.config/fish/config.fish"
+    line="fish_add_path $PREFIX" ;;
+  */zsh)
+    rc="$HOME/.zshrc"
+    line="export PATH=\"$PREFIX:\$PATH\"" ;;
+  */bash)
+    if [ "$os" = "darwin" ]; then rc="$HOME/.bash_profile"; else rc="$HOME/.bashrc"; fi
+    line="export PATH=\"$PREFIX:\$PATH\"" ;;
+  *)
+    rc="$HOME/.profile"
+    line="export PATH=\"$PREFIX:\$PATH\"" ;;
 esac
-line="export PATH=\"$PREFIX:\$PATH\""
+mkdir -p "$(dirname "$rc")"
 if [ -f "$rc" ] && grep -qxF "$line" "$rc"; then
   echo "    path: $PREFIX already on PATH via $rc"
 else

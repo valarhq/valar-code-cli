@@ -47,7 +47,7 @@ sh install.sh
    (provenance; see [SECURITY.md](SECURITY.md)). Skipped if `cosign` is absent.
 6. Installs to `~/.local/bin/valar` (override with `--prefix`).
 7. Adds the install dir to `PATH` via your shell rc (`~/.zshrc` / `~/.bashrc` /
-   `~/.bash_profile`), idempotently.
+   `~/.bash_profile` / `~/.config/fish/config.fish` for fish), idempotently.
 
 Dependencies: `curl`, `sha256sum`, `uname`. `cosign` is optional.
 
