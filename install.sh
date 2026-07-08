@@ -111,7 +111,6 @@ if command -v cosign >/dev/null 2>&1 \
         --certificate-identity "$identity" \
         --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
         --bundle "$tmp/checksums.txt.bundle" \
-        --signature "$tmp/checksums.txt.sig" \
         "$tmp/checksums.txt" >/dev/null 2>&1; then
     echo "    cosign: OK (provenance verified)"
   else

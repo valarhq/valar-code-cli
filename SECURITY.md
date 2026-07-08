@@ -46,7 +46,7 @@ curl -fsSL -o checksums.txt.bundle "$base/checksums.txt.bundle"
 cosign verify-blob \
   --certificate-identity "https://github.com/valarhq/valar-byoc/.github/workflows/release-valar-code.yml@refs/tags/$tag" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-  --bundle checksums.txt.bundle --signature checksums.txt.sig checksums.txt
+  --bundle checksums.txt.bundle checksums.txt
 ```
 
 This proves `checksums.txt` — and therefore every binary listed in it — was produced
