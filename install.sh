@@ -121,16 +121,26 @@ else
   echo "    cosign: skipped (install cosign to verify provenance; see SECURITY.md)"
 fi
 
-# ---- install ----
+# ---- install (always overwrites $PREFIX/valar with the resolved version) ----
 mkdir -p "$PREFIX"
 bin="$PREFIX/valar"
+prev=""
+if [ -x "$bin" ]; then
+  prev="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
+fi
 if [ -w "$PREFIX" ]; then
   install -m 0755 "$tmp/$TARGET" "$bin"
 else
   echo "==> $PREFIX is not writable; re-running install step with sudo"
   sudo install -m 0755 "$tmp/$TARGET" "$bin"
 fi
-echo "    installed: $bin"
+if [ -n "$prev" ] && [ "$prev" != "$VERSION" ]; then
+  echo "    installed: $bin (replaced $prev -> $VERSION)"
+elif [ -n "$prev" ]; then
+  echo "    installed: $bin (reinstalled $VERSION)"
+else
+  echo "    installed: $bin"
+fi
 
 # ---- PATH ----
 # Pick the rc file AND the line syntax for the user's login shell. fish uses a
@@ -165,5 +175,14 @@ if "$bin" --version >/dev/null 2>&1; then
   echo "==> $($bin --version) installed"
 else
   echo "==> valar installed (run 'valar --version' from a new shell)"
+fi
+
+# Warn if a DIFFERENT valar earlier on PATH will shadow the one we just installed
+# (the usual reason an install "doesn't take" — a stale copy in /usr/local/bin etc.).
+found="$(command -v valar 2>/dev/null || true)"
+if [ -n "$found" ] && [ "$found" != "$bin" ]; then
+  echo "    warning: another 'valar' is earlier on your PATH and will shadow this install:"
+  echo "               $found"
+  echo "             remove it, or ensure $PREFIX comes first on PATH."
 fi
 echo "    next: valar help"

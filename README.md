@@ -45,7 +45,9 @@ sh install.sh
 5. If [`cosign`](https://github.com/sigstore/cosign) is installed, verifies the
    Sigstore signature on `checksums.txt` against the build workflow identity
    (provenance; see [SECURITY.md](SECURITY.md)). Skipped if `cosign` is absent.
-6. Installs to `~/.local/bin/valar` (override with `--prefix`).
+6. Installs to `~/.local/bin/valar` (override with `--prefix`), **always overwriting**
+   any existing copy in that prefix; re-run any time to upgrade. It warns if a
+   different `valar` earlier on your `PATH` would shadow the new one.
 7. Adds the install dir to `PATH` via your shell rc (`~/.zshrc` / `~/.bashrc` /
    `~/.bash_profile` / `~/.config/fish/config.fish` for fish), idempotently.
 
