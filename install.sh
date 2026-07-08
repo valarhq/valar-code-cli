@@ -150,7 +150,7 @@ fi
 # ---- finish ----
 echo
 if "$bin" --version >/dev/null 2>&1; then
-  echo "==> valar $($bin --version) installed"
+  echo "==> $($bin --version) installed"
 else
   echo "==> valar installed (run 'valar --version' from a new shell)"
 fi
