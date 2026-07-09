@@ -17,7 +17,7 @@ curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install
 Pin a version:
 
 ```sh
-VALAR_VERSION=v1.2.3 sh -c "$(curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh)"
+VALAR_VERSION=valar-cli-v1.2.3 sh -c "$(curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh)"
 ```
 
 Install system-wide (to `/usr/local/bin`, prompts for `sudo`):
@@ -63,12 +63,12 @@ Dependencies: `curl`, `sha256sum`, `uname`. `cosign` is optional.
 ## Verify a release manually
 
 ```sh
-tag=v1.2.3
+tag=valar-cli-v1.2.3
 curl -fsSL -o checksums.txt     https://github.com/valarhq/valar-code-cli/releases/download/$tag/checksums.txt
 curl -fsSL -o checksums.txt.sig https://github.com/valarhq/valar-code-cli/releases/download/$tag/checksums.txt.sig
 curl -fsSL -o checksums.txt.bundle https://github.com/valarhq/valar-code-cli/releases/download/$tag/checksums.txt.bundle
 cosign verify-blob \
-  --certificate-identity "https://github.com/valarhq/valar-byoc/.github/workflows/release-valar-code.yml@refs/tags/$tag" \
+  --certificate-identity "https://github.com/valarhq/valar-monorepo/.github/workflows/release-valar-code.yml@refs/tags/$tag" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   --bundle checksums.txt.bundle checksums.txt
 sha256sum -c checksums.txt   # check the binary you downloaded

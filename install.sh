@@ -5,7 +5,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | sh
 #
 # Pin a version:
-#   VALAR_VERSION=v1.2.3 sh -c "$(curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh)"
+#   VALAR_VERSION=valar-cli-v1.2.3 sh -c "$(curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh)"
 #
 # Audit-first (recommended for production):
 #   curl -fsSL -o install.sh https://raw.githubusercontent.com/valarhq/valar-code-cli/<commit-sha>/install.sh
@@ -19,7 +19,7 @@
 #
 # Integrity: the binary's SHA256 is verified against checksums.txt (mandatory). If
 # cosign is installed, checksums.txt's Sigstore signature is also verified against
-# the valar-byoc release workflow identity (optional, fails closed if present but
+# the valar-monorepo release workflow identity (optional, fails closed if present but
 # invalid). See SECURITY.md.
 
 set -eu
@@ -106,7 +106,7 @@ echo "    sha256: OK"
 # ---- verify cosign signature (optional) ----
 if command -v cosign >/dev/null 2>&1 \
    && [ -s "$tmp/checksums.txt.sig" ] && [ -s "$tmp/checksums.txt.bundle" ]; then
-  identity="https://github.com/valarhq/valar-byoc/.github/workflows/release-valar-code.yml@refs/tags/$VERSION"
+  identity="https://github.com/valarhq/valar-monorepo/.github/workflows/release-valar-code.yml@refs/tags/$VERSION"
   if cosign verify-blob \
         --certificate-identity "$identity" \
         --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \

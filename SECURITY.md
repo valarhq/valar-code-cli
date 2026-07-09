@@ -1,7 +1,7 @@
 # Security: verifying a `valar` release
 
 Every release of `valar` is built by a release workflow in the private
-`valarhq/valar-byoc` repo and published to this repo's GitHub Releases. Two layers
+`valarhq/valar-monorepo` repo and published to this repo's GitHub Releases. Two layers
 of verification protect the binary you run.
 
 ## 1. SHA256 checksum (mandatory)
@@ -27,7 +27,7 @@ using the GitHub Actions OIDC token of the build workflow. The signing identity 
 recorded in the public Sigstore transparency log (Rekor) and is:
 
 ```
-https://github.com/valarhq/valar-byoc/.github/workflows/release-valar-code.yml@refs/tags/<tag>
+https://github.com/valarhq/valar-monorepo/.github/workflows/release-valar-code.yml@refs/tags/<tag>
 ```
 
 The signature (`checksums.txt.sig`) and Rekor bundle (`checksums.txt.bundle`) are
@@ -38,13 +38,13 @@ step is skipped with a note — install `cosign` to get provenance verification.
 To verify manually (no install.sh):
 
 ```sh
-tag=v1.2.3
+tag=valar-cli-v1.2.3
 base=https://github.com/valarhq/valar-code-cli/releases/download/$tag
 curl -fsSL -o checksums.txt        "$base/checksums.txt"
 curl -fsSL -o checksums.txt.sig    "$base/checksums.txt.sig"
 curl -fsSL -o checksums.txt.bundle "$base/checksums.txt.bundle"
 cosign verify-blob \
-  --certificate-identity "https://github.com/valarhq/valar-byoc/.github/workflows/release-valar-code.yml@refs/tags/$tag" \
+  --certificate-identity "https://github.com/valarhq/valar-monorepo/.github/workflows/release-valar-code.yml@refs/tags/$tag" \
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
   --bundle checksums.txt.bundle checksums.txt
 ```
@@ -52,7 +52,7 @@ cosign verify-blob \
 This proves `checksums.txt` — and therefore every binary listed in it — was produced
 by that specific workflow run on that tag. Even if this distribution repo or its
 releases were compromised, the signature would not validate against the
-`valar-byoc` workflow identity unless the attacker also controlled the private
+`valar-monorepo` workflow identity unless the attacker also controlled the private
 repo's workflow.
 
 ## What this protects against
@@ -60,7 +60,7 @@ repo's workflow.
 | Threat | Mitigation |
 |--------|------------|
 | Tampered/corrupted binary | Mandatory SHA256 vs `checksums.txt` |
-| Tampered `checksums.txt` (release compromised) | cosign/Sigstore signature tied to the `valar-byoc` workflow + tag identity, in a transparency log |
+| Tampered `checksums.txt` (release compromised) | cosign/Sigstore signature tied to the `valar-monorepo` workflow + tag identity, in a transparency log |
 | Tampered `install.sh` (the `curl \| bash` surface) | Script is small and auditable; pin to an immutable commit SHA and read it first (`curl -o install.sh … && less install.sh && sh install.sh`) |
 
 ## Reproducible builds
