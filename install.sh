@@ -99,7 +99,17 @@ if [ -z "$line" ]; then
   echo "install.sh: no checksum entry for $TARGET in checksums.txt" >&2
   exit 1
 fi
-echo "$line" | (cd "$tmp" && sha256sum -c -) >/dev/null 2>&1 \
+# macOS <= 15 ships shasum, not sha256sum (Apple added /sbin/sha256sum in macOS 26).
+if command -v sha256sum >/dev/null 2>&1; then
+  sha_c="sha256sum -c -"
+elif command -v shasum >/dev/null 2>&1; then
+  sha_c="shasum -a 256 -c -"
+else
+  echo "install.sh: need sha256sum or shasum to verify the download" >&2
+  exit 1
+fi
+# stderr stays visible: a swallowed "command not found" reads as a checksum mismatch.
+echo "$line" | (cd "$tmp" && $sha_c) >/dev/null \
   || { echo "install.sh: SHA256 verification FAILED for $TARGET" >&2; exit 1; }
 echo "    sha256: OK"
 
