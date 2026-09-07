@@ -4,7 +4,7 @@ Public installer and release distribution for the **`valar`** CLI — the client
 tool that routes Claude Code and Cursor through the Valar gateway
 (`api.valarhq.ai`), changing only the base URL and key.
 
-This repo holds the installer (`install.sh`) and the published release binaries.
+This repo holds the installers (`install.sh`, `install.ps1` for Windows) and the published release binaries.
 The product source lives in a private repo; binaries are built there and published
 here by a release workflow, signed with Sigstore/cosign.
 
@@ -19,6 +19,17 @@ Pin a version:
 ```sh
 VALAR_VERSION=valar-cli-v1.2.3 sh -c "$(curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh)"
 ```
+
+Windows (PowerShell; installs `valar.exe` to `%USERPROFILE%\.local\bin` and adds it to your user PATH):
+
+```powershell
+irm https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.ps1 | iex
+```
+
+Pin a version on Windows with `$env:VALAR_VERSION = 'valar-cli-v1.2.3'` before the line above. Windows binaries ship only
+in releases that carry `valar-windows-*.exe` assets; on an older release the installer stops with "release … has no asset".
+The binaries are not yet Authenticode-signed: the installer verifies the SHA-256 and clears the download mark, so a
+terminal launch just works, while a first launch from Explorer may show a SmartScreen prompt.
 
 Install system-wide (to `/usr/local/bin`, prompts for `sudo`):
 
@@ -59,6 +70,7 @@ Dependencies: `curl`, `sha256sum`, `uname`. `cosign` is optional.
 |----|------|
 | macOS (darwin) | arm64, amd64 |
 | Linux | arm64, amd64 |
+| Windows | arm64, amd64 (`install.ps1`; releases with Windows assets only) |
 
 ## Verify a release manually
 
