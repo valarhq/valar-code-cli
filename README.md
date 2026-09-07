@@ -27,7 +27,7 @@ irm https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.ps1 | 
 ```
 
 Pin a version on Windows with `$env:VALAR_VERSION = 'valar-cli-v1.2.3'` before the line above. Windows binaries ship only
-in releases that carry `valar-windows-*.exe` assets; on an older release the installer stops with "release … has no asset".
+in releases that carry `valar-windows-*.exe` assets; on an older release the installer stops with "no checksum entry for valar-windows-<arch>.exe".
 The binaries are not yet Authenticode-signed: the installer verifies the SHA-256 and clears the download mark, so a
 terminal launch just works, while a first launch from Explorer may show a SmartScreen prompt.
 
