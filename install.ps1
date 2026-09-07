@@ -22,10 +22,14 @@
   $repo   = 'valarhq/valar-code-cli'
   $prefix = if ($env:VALAR_PREFIX) { $env:VALAR_PREFIX } else { Join-Path $env:USERPROFILE '.local\bin' }
   $prefix = $prefix.TrimEnd('\')
-  $arch   = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) {
-    'Arm64'  { 'arm64' }
-    'X64'    { 'amd64' }
-    default  { throw "install.ps1: unsupported architecture '$_'" }
+  # From the environment, not [RuntimeInformation]::OSArchitecture: that .NET call can bind to
+  # a facade and return null in Windows PowerShell 5.1. PROCESSOR_ARCHITEW6432 is set when an
+  # emulated PowerShell runs on a different native architecture.
+  $archRaw = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+  $arch   = switch ($archRaw) {
+    'ARM64'  { 'arm64' }
+    'AMD64'  { 'amd64' }
+    default  { throw "install.ps1: unsupported architecture '$archRaw'" }
   }
 
   # ---- resolve the release (one API call; none when pinned, as install.sh) ----
