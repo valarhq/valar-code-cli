@@ -2,19 +2,16 @@
 #
 #   irm https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.ps1 | iex
 #
-# This file is published verbatim to the public valarhq/valar-code-cli repo next to
-# install.sh; the monorepo copy is the source. Knobs are env vars (a piped script
-# takes no parameters), mirroring install.sh:
+# Knobs are env vars (a piped script takes no parameters), mirroring install.sh:
 #
 #   VALAR_VERSION  release tag to install (default: the latest non-prerelease)
 #   VALAR_PREFIX   install directory (default: %USERPROFILE%\.local\bin)
 #   VALAR_REPO     GitHub repo to install from (default: valarhq/valar-code-cli)
-#   VALAR_NAME     asset + binary base name (default: valar; internal dev builds are valar-dev)
+#   VALAR_NAME     asset + binary base name (default: valar)
 #   VALAR_ARCH     amd64 | arm64 (default: the OS architecture)
-#   GITHUB_TOKEN   optional. Required when VALAR_REPO is private; otherwise only lifts the API rate limit.
+#   GITHUB_TOKEN   optional; lifts the API rate limit (required if VALAR_REPO is not public).
 #
-# Every download goes through the GitHub releases API, so a public and a private
-# repo take the same path — the token is the only difference.
+# Every download goes through the GitHub releases API.
 
 $ErrorActionPreference = 'Stop'
 # The progress bar makes Invoke-WebRequest an order of magnitude slower on PowerShell 5.1.
@@ -56,9 +53,9 @@ function Get-Asset([string]$assetName, [switch]$Optional) {
     if ($Optional) { return $null }
     throw "install.ps1: release $version has no asset '$assetName'"
   }
-  # The asset endpoint 302s to a pre-signed storage URL. Validated on PowerShell 5.1
-  # with a private repo: whether or not the client forwards Authorization across that
-  # redirect (version-dependent), the download succeeds.
+  # The asset endpoint 302s to a pre-signed storage URL. Validated on PowerShell 5.1:
+  # whether or not the client forwards Authorization across that redirect
+  # (version-dependent), the download succeeds.
   $h = $headers.Clone(); $h['Accept'] = 'application/octet-stream'
   $out = Join-Path $tmp $assetName
   Invoke-WebRequest $a.url -Headers $h -OutFile $out -UseBasicParsing
