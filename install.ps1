@@ -152,7 +152,7 @@
     if ($LASTEXITCODE -ne 0) { $new_version = '' }
   } catch { $new_version = '' }
   if (-not $new_version) {
-    Write-Warning "install.ps1: $bin is in place but did not run cleanly (Defender or AppLocker may have blocked it); try 'valar --version' from a new shell"
+    Write-Warning "install.ps1: $bin is in place but did not run cleanly; try 'valar --version' from a new shell"
   } elseif ($prev_version -and $prev_version -ne $new_version) {
     Write-Host "    installed: $bin (replaced $prev_version -> $new_version)"
   } else {
@@ -162,5 +162,4 @@
   if ($onPath -and $onPath.Source -and ($onPath.Source -ne $bin)) {
     Write-Warning "install.ps1: 'valar' on your PATH resolves to $($onPath.Source), not $bin - the earlier entry shadows this install; remove it or put $prefix first"
   }
-  Write-Host "    note: the binary is not yet Authenticode-signed; a first launch from Explorer may show a SmartScreen prompt (terminal launches are unaffected)"
 }
