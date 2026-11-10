@@ -7,6 +7,12 @@
 #   VALAR_VERSION  release tag to install (default: the latest release)
 #   VALAR_PREFIX   install directory (default: %USERPROFILE%\.local\bin)
 #   GITHUB_TOKEN   optional; lifts the GitHub API rate limit
+#
+# Setup: in a console, the installer then runs `valar login`, reads the organization's
+# installation defaults with `valar org-policy`, runs `valar proxy enable` and
+# `valar configure --quota-first` when those defaults say so, and ends with `valar on`, where
+# you pick your tools. It stops at the first step that fails and prints the steps left. With
+# redirected input (a scripted run) it only installs, and prints the commands that finish it.
 
 # The whole body runs in its own scope: `irm | iex` evaluates in the CALLER's session, and the
 # preference variables, the helper function and the token-bearing headers must not outlive
@@ -192,4 +198,116 @@
   if ($onPath -and $onPath.Source -and ($onPath.Source -ne $bin)) {
     Write-Warning "install.ps1: 'valar' on your PATH resolves to $($onPath.Source), not $bin - the earlier entry shadows this install; remove it or put $prefix first"
   }
+
+  # ---- guided setup ----
+  # In a console, run the setup from the binary just installed, one `valar` command per step:
+  # sign in, read the organization's installation defaults, then the on-device proxy and quota
+  # first when those defaults say so, then pick the tools. `irm | iex` runs this script in the
+  # engineer's own console, so each step reads it. The steps call $bin by its full path; the
+  # commands printed for the engineer use the bare name.
+  $runHint = if ($onPath -and ($onPath.Source -eq $bin)) { 'run:' } else { 'open a new terminal, then run:' }
+  $policyRead = $false
+  $proxy = ''
+  $quotaFirst = ''
+
+  # Prints the setup commands from step $from on. Until the policy is read, the two optional
+  # steps carry the condition that decides them; after, only the steps the policy asks for.
+  function Write-Steps([string]$from) {
+    $listing = $false
+    foreach ($s in 'login', 'org-policy', 'proxy', 'quota-first', 'on') {
+      if ($s -eq $from) { $listing = $true }
+      if (-not $listing) { continue }
+      switch ($s) {
+        'login'       { Write-Host '      valar login' }
+        'org-policy'  { Write-Host '      valar org-policy' }
+        'proxy' {
+          if (-not $policyRead)  { Write-Host '      valar proxy enable              (only if org-policy printed proxy=on)' }
+          elseif ($proxy -eq 'on') { Write-Host '      valar proxy enable' }
+        }
+        'quota-first' {
+          if (-not $policyRead)  { Write-Host '      valar configure --quota-first   (only if org-policy printed quota_first=on)' }
+          elseif ($quotaFirst -eq 'on') { Write-Host '      valar configure --quota-first' }
+        }
+        'on'          { Write-Host '      valar on' }
+      }
+    }
+  }
+
+  # A failed step ends the install with that step's exit code. Nothing after it runs: the
+  # remaining steps may depend on it, and a failed proxy step must not leave tools on the
+  # direct lane when the organization chose the proxy. Run from a file, the script exits with
+  # the code; run through `irm | iex` it returns with $LASTEXITCODE set, since `exit` would
+  # close the engineer's console.
+  function Stop-Setup([string]$step, [string]$command, [int]$code) {
+    Write-Host ''
+    Write-Host "==> Setup stopped: '$command' did not finish (exit code $code)."
+    if ($step -eq 'proxy') {
+      Write-Host '    The on-device proxy needs administrator rights on this machine.'
+      Write-Host '    If you cannot give them, ask your IT team to install it.'
+    }
+    Write-Host "    To finish the setup, $runHint"
+    Write-Steps $step
+    $global:LASTEXITCODE = $code
+    if ($PSCommandPath) { exit $code }
+  }
+
+  Write-Host ''
+  if ([Console]::IsInputRedirected) {
+    Write-Host "==> No terminal, so the setup did not run. To finish it, $runHint"
+    Write-Steps 'login'
+    $global:LASTEXITCODE = 0
+    return
+  }
+  # `*> $null` does not silence a native command's stderr in Windows PowerShell 5.1; a pipe does.
+  $prevPref = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try { & $bin org-policy --help 2>&1 | Out-Null; $supported = ($LASTEXITCODE -eq 0) } catch { $supported = $false } finally { $ErrorActionPreference = $prevPref }
+  if (-not $supported) {
+    Write-Host "==> valar $version does not support the guided setup. To set it up by hand, $runHint"
+    Write-Host '      valar login'
+    Write-Host '      valar proxy enable              (if your organization uses the on-device proxy)'
+    Write-Host '      valar configure --quota-first   (if your organization uses quota first)'
+    Write-Host '      valar <tool> on                 (for each tool, for example: valar claude on)'
+    $global:LASTEXITCODE = 0
+    return
+  }
+
+  Write-Host '==> Setting up valar'
+  # Each step runs as a plain statement, not inside a function or a capture, so valar gets this
+  # console for its questions. Native stderr must not become a terminating error under
+  # $ErrorActionPreference = 'Stop', so each call runs with Continue and is judged by its exit
+  # code alone.
+  foreach ($step in 'login', 'org-policy', 'proxy', 'quota-first', 'on') {
+    $stepArgs = switch ($step) {
+      'login'       { , @('login') }
+      'org-policy'  { , @('org-policy') }
+      'proxy'       { if ($proxy -eq 'on') { , @('proxy', 'enable') } }
+      'quota-first' { if ($quotaFirst -eq 'on') { , @('configure', '--quota-first') } }
+      'on'          { , @('on') }
+    }
+    if (-not $stepArgs) { continue }
+    $command = "valar $($stepArgs -join ' ')"
+    Write-Host ''
+    Write-Host "==> $command"
+    $ErrorActionPreference = 'Continue'
+    if ($step -eq 'org-policy') { $policyOut = & $bin @stepArgs } else { & $bin @stepArgs }
+    $rc = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($rc -ne 0) { Stop-Setup $step $command $rc; return }
+    if ($step -eq 'org-policy') {
+      # key=value lines; keys this script does not know are ignored.
+      $policy = ConvertFrom-StringData (($policyOut | Where-Object { $_ -match '^[A-Za-z_]+=' }) -join "`n")
+      $proxy = [string]$policy['proxy']
+      $quotaFirst = [string]$policy['quota_first']
+      if (($proxy -notin 'on', 'off') -or ($quotaFirst -notin 'on', 'off')) {
+        Write-Host "install.ps1: 'valar org-policy' did not print proxy=on|off and quota_first=on|off"
+        Stop-Setup $step $command 1; return
+      }
+      $policyRead = $true
+      Write-Host "    on-device proxy: $proxy, quota first: $quotaFirst"
+    }
+  }
+
+  Write-Host ''
+  Write-Host "==> valar is set up. For more, $runHint"
+  Write-Host '      valar help'
 }

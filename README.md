@@ -59,6 +59,14 @@ sh install.sh
    different `valar` earlier on your `PATH` would shadow the new one.
 7. Adds the install dir to `PATH` via your shell rc (`~/.zshrc` / `~/.bashrc` /
    `~/.bash_profile` / `~/.config/fish/config.fish` for fish), idempotently.
+8. On a terminal, runs the setup with the `valar` it just installed: `valar login`,
+   `valar org-policy` (your organization's installation defaults), `valar proxy enable` and
+   `valar configure --quota-first` when those defaults say so, then `valar on`, where you
+   pick your tools. It stops at the first step that fails and prints the steps left; if the
+   on-device proxy cannot be installed without administrator rights, ask your IT team to
+   install it. With no terminal, or with a release older than the guided setup, it only
+   installs and prints the commands that finish the setup. `install.ps1` does the same on
+   Windows.
 
 Dependencies: `curl`, `sha256sum`, `uname`. `cosign` is optional.
 
