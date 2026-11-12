@@ -21,6 +21,14 @@
 # cosign is installed, checksums.txt's Sigstore signature is also verified against
 # the valar-monorepo release workflow identity (optional, fails closed if present but
 # invalid). See SECURITY.md.
+#
+# Setup: on a terminal, the installer then runs `valar login`, reads the organization's
+# installation defaults with `valar org-policy`, runs `valar proxy enable` and
+# `valar configure --quota-first` when those defaults say so, and ends with `valar on`, where
+# you pick your tools, unless the organization has turned Valar off. It stops at the first step
+# that fails and prints the steps left. With no
+# terminal it only installs, and prints the commands that finish the setup. A release without
+# the guided setup installs exactly as before it.
 
 set -eu
 
@@ -195,4 +203,131 @@ if [ -n "$found" ] && [ "$found" != "$bin" ]; then
   echo "               $found"
   echo "             remove it, or ensure $PREFIX comes first on PATH."
 fi
-echo "    next: valar help"
+
+# ---- guided setup ----
+# On a terminal, run the setup from the binary just installed, one `valar` command per step:
+# sign in, read the organization's installation defaults, then the on-device proxy and quota
+# first when those defaults say so, then pick the tools. Each step reads /dev/tty, since
+# `curl | sh` feeds this script on stdin. The steps call "$bin" by its full path; the commands
+# printed for the engineer use the bare name, which works once PATH has reached the shell.
+if [ "$found" = "$bin" ]; then
+  run_hint="run:"
+else
+  run_hint="open a new terminal (or run: source $rc), then run:"
+fi
+
+# Prints the setup commands from step $1 on. Until the policy is read, the two optional steps
+# carry the condition that decides them; after, only the steps the policy asks for are listed.
+policy_read=""
+proxy=""
+quota_first=""
+valar_switch=""
+print_steps() {
+  listing=""
+  for s in login org-policy proxy quota-first on; do
+    [ "$s" = "$1" ] && listing=1
+    [ -n "$listing" ] || continue
+    case "$s" in
+      login)      echo "      valar login" ;;
+      org-policy) echo "      valar org-policy" ;;
+      proxy)
+        if [ -z "$policy_read" ]; then
+          echo "      valar proxy enable              (only if org-policy printed proxy=on)"
+        elif [ "$proxy" = on ]; then
+          echo "      valar proxy enable"
+        fi ;;
+      quota-first)
+        if [ -z "$policy_read" ]; then
+          echo "      valar configure --quota-first   (only if org-policy printed quota_first=on)"
+        elif [ "$quota_first" = on ]; then
+          echo "      valar configure --quota-first"
+        fi ;;
+      on)         echo "      valar on" ;;
+    esac
+  done
+}
+
+# A failed step ends the install with that step's exit code. Nothing after it runs: the
+# remaining steps may depend on it, and a failed proxy step must not leave tools on the direct
+# lane when the organization chose the proxy.
+setup_failed() {
+  echo
+  echo "==> Setup stopped: '$2' did not finish (exit code $3)."
+  if [ "$1" = proxy ]; then
+    echo "    The on-device proxy needs administrator rights on this machine."
+    echo "    If you cannot give them, ask your IT team to install it."
+  fi
+  echo "    To finish the setup, $run_hint"
+  print_steps "$1"
+  exit "$3"
+}
+
+run_step() {
+  step=$1
+  shift
+  echo
+  echo "==> valar $*"
+  rc=0
+  "$bin" "$@" </dev/tty || rc=$?
+  [ "$rc" -eq 0 ] || setup_failed "$step" "valar $*" "$rc"
+}
+
+# A release without the guided setup (no `valar org-policy` or no global `valar on`; v1.1.46
+# and v1.1.47 have the first but not the second) installs exactly as the installer did before
+# the guided setup existed.
+if ! "$bin" org-policy --help </dev/null >/dev/null 2>&1 \
+   || ! "$bin" on --help </dev/null >/dev/null 2>&1; then
+  echo "    next: valar help"
+  exit 0
+fi
+
+echo
+if ! ( : </dev/tty ) 2>/dev/null; then
+  echo "==> No terminal, so the setup did not run. To finish it, $run_hint"
+  print_steps login
+  exit 0
+fi
+
+echo "==> Setting up valar"
+run_step login login
+
+echo
+echo "==> valar org-policy"
+rc=0
+policy="$("$bin" org-policy </dev/tty)" || rc=$?
+[ "$rc" -eq 0 ] || setup_failed org-policy "valar org-policy" "$rc"
+# key=value lines; keys this script does not know are skipped.
+while IFS='=' read -r key value; do
+  case "$key" in
+    valar)       valar_switch=$value ;;
+    proxy)       proxy=$value ;;
+    quota_first) quota_first=$value ;;
+  esac
+done <<EOF
+$policy
+EOF
+case "$proxy:$quota_first" in
+  on:on|on:off|off:on|off:off) ;;
+  *)
+    echo "install.sh: 'valar org-policy' did not print proxy=on|off and quota_first=on|off" >&2
+    setup_failed org-policy "valar org-policy" 1 ;;
+esac
+policy_read=1
+echo "    on-device proxy: $proxy, quota first: $quota_first"
+
+if [ "$proxy" = on ]; then run_step proxy proxy enable; fi
+if [ "$quota_first" = on ]; then run_step quota-first configure --quota-first; fi
+# An organization that has turned Valar off gets no tools turned on: `valar on` would route them
+# through Valar, and a new machine has not yet learned that the organization switched it off.
+if [ "$valar_switch" = off ]; then
+  echo
+  echo "==> Your organization has turned Valar off, so no tools were turned on."
+  echo "    Once it is back on, run:"
+  echo "      valar on"
+  exit 0
+fi
+run_step on on
+
+echo
+echo "==> valar is set up. For more, $run_hint"
+echo "      valar help"
