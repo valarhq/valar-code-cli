@@ -79,30 +79,7 @@ fi
 
 # ---- temp workspace ----
 tmp="$(mktemp -d 2>/dev/null || mktemp -d -t valar)"
-trap 'spin_stop failed; rm -rf "$tmp"' EXIT
-# A trap on INT/TERM alone does not stop sh: exit, so Ctrl-C ends the install (via the EXIT trap).
-trap 'exit 130' INT
-trap 'exit 143' TERM
-
-# "installing." -> ".." -> "..." on a terminal while the ~19 MB binary downloads, so the
-# install doesn't look stuck. With no terminal (MDM logs) it prints one plain line.
-spin_pid=""
-spin_start() {
-  if [ -t 1 ]; then
-    ( while :; do for d in '.  ' '.. ' '...'; do printf '\r    installing%s' "$d"; sleep 0.4; done; done ) &
-    spin_pid=$!
-  else
-    echo "    installing..."
-  fi
-}
-spin_stop() {
-  [ -n "$spin_pid" ] || return 0
-  kill "$spin_pid" 2>/dev/null || :
-  wait "$spin_pid" 2>/dev/null || :
-  spin_pid=""
-  # A failed download exits through the trap: end the line without claiming "done".
-  if [ "${1:-}" = failed ]; then echo; else printf '\r    installing... done\n'; fi
-}
+trap 'rm -rf "$tmp"' EXIT INT TERM
 
 base="https://github.com/$REPO/releases/download/$VERSION"
 curl_auth() {
@@ -116,18 +93,11 @@ curl_auth() {
 echo "==> valar $VERSION for $TARGET"
 
 # ---- download checksums + binary ----
-spin_start
-# curl's error waits until the dots line has ended, so it doesn't land in the middle of it.
-if ! { curl_auth -o "$tmp/checksums.txt" "$base/checksums.txt" \
-    && curl_auth -o "$tmp/$TARGET" "$base/$TARGET"; } 2>"$tmp/curl.err"; then
-  spin_stop failed
-  cat "$tmp/curl.err" >&2
-  exit 1
-fi
+curl_auth -o "$tmp/checksums.txt" "$base/checksums.txt"
+curl_auth -o "$tmp/$TARGET"       "$base/$TARGET"
 # Signature + bundle may not exist for older releases; download best-effort.
 curl_auth -o "$tmp/checksums.txt.sig"    "$base/checksums.txt.sig"    2>/dev/null || :
 curl_auth -o "$tmp/checksums.txt.bundle" "$base/checksums.txt.bundle" 2>/dev/null || :
-spin_stop
 
 # ---- verify SHA256 (mandatory, fails closed) ----
 line="$(grep "  $TARGET\$" "$tmp/checksums.txt" || true)"

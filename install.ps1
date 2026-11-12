@@ -77,37 +77,7 @@
     if (-not $want) { throw "install.ps1: no checksum entry for $asset in checksums.txt" }
 
     # ---- download + verify SHA256 (mandatory, fails closed) ----
-    # "installing." -> ".." -> "..." in a console while the ~19 MB binary downloads, so the
-    # install doesn't look stuck. Redirected output (MDM and other scripted runs) gets one plain
-    # line. The download is the same Invoke-WebRequest, run in a second runspace so this one is
-    # free to draw the dots.
-    $animate = -not [Console]::IsOutputRedirected
-    if (-not $animate) { Write-Host "    installing..." }
-    $bin_tmp = Join-Path $tmp $asset
-    $dl = [PowerShell]::Create().AddScript({
-      param($url, $out)
-      $ErrorActionPreference = 'Stop'
-      $ProgressPreference = 'SilentlyContinue'
-      Invoke-WebRequest $url -OutFile $out -UseBasicParsing
-    }).AddArgument("$base/$asset").AddArgument($bin_tmp)
-    try {
-      $handle = $dl.BeginInvoke()
-      $i = 0
-      while (-not $handle.IsCompleted) {
-        if ($animate) { Write-Host -NoNewline ("`r    installing" + ('.  ', '.. ', '...')[$i++ % 3]) }
-        Start-Sleep -Milliseconds 400
-      }
-      try {
-        $dl.EndInvoke($handle) | Out-Null
-      } catch {
-        # End the dots line without claiming "done".
-        if ($animate) { Write-Host '' }
-        throw "install.ps1: release $version has no asset '$asset' ($($_.Exception.GetBaseException().Message))"
-      }
-      if ($animate) { Write-Host "`r    installing... done" }
-    } finally {
-      $dl.Dispose()
-    }
+    $bin_tmp = Get-Asset $asset
     $got = (Get-FileHash $bin_tmp -Algorithm SHA256).Hash.ToLower()
     if ($got -ne $want) { throw "install.ps1: SHA256 verification FAILED for $asset (want $want, got $got)" }
     Write-Host "    sha256: OK"
