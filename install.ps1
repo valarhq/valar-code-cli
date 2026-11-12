@@ -12,7 +12,8 @@
 # installation defaults with `valar org-policy`, runs `valar proxy enable` and
 # `valar configure --quota-first` when those defaults say so, and ends with `valar on`, where
 # you pick your tools. It stops at the first step that fails and prints the steps left. With
-# redirected input (a scripted run) it only installs, and prints the commands that finish it.
+# redirected input (a scripted run) it only installs, and prints the commands that finish it. A
+# release without the guided setup installs exactly as before it.
 
 # The whole body runs in its own scope: `irm | iex` evaluates in the CALLER's session, and the
 # preference variables, the helper function and the token-bearing headers must not outlive
@@ -221,22 +222,24 @@
     if ($PSCommandPath) { exit $code }
   }
 
+  # A release without the guided setup (no `valar org-policy` or no global `valar on`; v1.1.46
+  # and v1.1.47 have the first but not the second) installs exactly as the installer did before
+  # the guided setup existed: nothing more is printed.
+  # `*> $null` does not silence a native command's stderr in Windows PowerShell 5.1; a pipe does.
+  $prevPref = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+  try {
+    & $bin org-policy --help 2>&1 | Out-Null; $supported = ($LASTEXITCODE -eq 0)
+    if ($supported) { & $bin on --help 2>&1 | Out-Null; $supported = ($LASTEXITCODE -eq 0) }
+  } catch { $supported = $false } finally { $ErrorActionPreference = $prevPref }
+  if (-not $supported) {
+    $global:LASTEXITCODE = 0
+    return
+  }
+
   Write-Host ''
   if ([Console]::IsInputRedirected) {
     Write-Host "==> No terminal, so the setup did not run. To finish it, $runHint"
     Write-Steps 'login'
-    $global:LASTEXITCODE = 0
-    return
-  }
-  # `*> $null` does not silence a native command's stderr in Windows PowerShell 5.1; a pipe does.
-  $prevPref = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  try { & $bin org-policy --help 2>&1 | Out-Null; $supported = ($LASTEXITCODE -eq 0) } catch { $supported = $false } finally { $ErrorActionPreference = $prevPref }
-  if (-not $supported) {
-    Write-Host "==> valar $version does not support the guided setup. To set it up by hand, $runHint"
-    Write-Host '      valar login'
-    Write-Host '      valar proxy enable              (if your organization uses the on-device proxy)'
-    Write-Host '      valar configure --quota-first   (if your organization uses quota first)'
-    Write-Host '      valar <tool> on                 (for each tool, for example: valar claude on)'
     $global:LASTEXITCODE = 0
     return
   }

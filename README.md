@@ -64,9 +64,9 @@ sh install.sh
    `valar configure --quota-first` when those defaults say so, then `valar on`, where you
    pick your tools. It stops at the first step that fails and prints the steps left; if the
    on-device proxy cannot be installed without administrator rights, ask your IT team to
-   install it. With no terminal, or with a release older than the guided setup, it only
-   installs and prints the commands that finish the setup. `install.ps1` does the same on
-   Windows.
+   install it. With no terminal it only installs and prints the commands that finish the
+   setup. A release older than the guided setup installs exactly as before it.
+   `install.ps1` does the same on Windows.
 
 Dependencies: `curl`, `sha256sum`, `uname`. `cosign` is optional.
 

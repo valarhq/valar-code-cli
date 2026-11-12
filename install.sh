@@ -26,7 +26,8 @@
 # installation defaults with `valar org-policy`, runs `valar proxy enable` and
 # `valar configure --quota-first` when those defaults say so, and ends with `valar on`, where
 # you pick your tools. It stops at the first step that fails and prints the steps left. With no
-# terminal it only installs, and prints the commands that finish the setup.
+# terminal it only installs, and prints the commands that finish the setup. A release without
+# the guided setup installs exactly as before it.
 
 set -eu
 
@@ -269,18 +270,19 @@ run_step() {
   [ "$rc" -eq 0 ] || setup_failed "$step" "valar $*" "$rc"
 }
 
+# A release without the guided setup (no `valar org-policy` or no global `valar on`; v1.1.46
+# and v1.1.47 have the first but not the second) installs exactly as the installer did before
+# the guided setup existed.
+if ! "$bin" org-policy --help </dev/null >/dev/null 2>&1 \
+   || ! "$bin" on --help </dev/null >/dev/null 2>&1; then
+  echo "    next: valar help"
+  exit 0
+fi
+
 echo
 if ! ( : </dev/tty ) 2>/dev/null; then
   echo "==> No terminal, so the setup did not run. To finish it, $run_hint"
   print_steps login
-  exit 0
-fi
-if ! "$bin" org-policy --help </dev/null >/dev/null 2>&1; then
-  echo "==> valar $VERSION does not support the guided setup. To set it up by hand, $run_hint"
-  echo "      valar login"
-  echo "      valar proxy enable              (if your organization uses the on-device proxy)"
-  echo "      valar configure --quota-first   (if your organization uses quota first)"
-  echo "      valar <tool> on                 (for each tool, for example: valar claude on)"
   exit 0
 fi
 
