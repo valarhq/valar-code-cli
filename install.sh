@@ -25,7 +25,8 @@
 # Setup: on a terminal, the installer then runs `valar login`, reads the organization's
 # installation defaults with `valar org-policy`, runs `valar proxy enable` and
 # `valar configure --quota-first` when those defaults say so, and ends with `valar on`, where
-# you pick your tools. It stops at the first step that fails and prints the steps left. With no
+# you pick your tools, unless the organization has turned Valar off. It stops at the first step
+# that fails and prints the steps left. With no
 # terminal it only installs, and prints the commands that finish the setup. A release without
 # the guided setup installs exactly as before it.
 
@@ -220,6 +221,7 @@ fi
 policy_read=""
 proxy=""
 quota_first=""
+valar_switch=""
 print_steps() {
   listing=""
   for s in login org-policy proxy quota-first on; do
@@ -297,6 +299,7 @@ policy="$("$bin" org-policy </dev/tty)" || rc=$?
 # key=value lines; keys this script does not know are skipped.
 while IFS='=' read -r key value; do
   case "$key" in
+    valar)       valar_switch=$value ;;
     proxy)       proxy=$value ;;
     quota_first) quota_first=$value ;;
   esac
@@ -314,6 +317,15 @@ echo "    on-device proxy: $proxy, quota first: $quota_first"
 
 if [ "$proxy" = on ]; then run_step proxy proxy enable; fi
 if [ "$quota_first" = on ]; then run_step quota-first configure --quota-first; fi
+# An organization that has turned Valar off gets no tools turned on: `valar on` would route them
+# through Valar, and a new machine has not yet learned that the organization switched it off.
+if [ "$valar_switch" = off ]; then
+  echo
+  echo "==> Your organization has turned Valar off, so no tools were turned on."
+  echo "    Once it is back on, run:"
+  echo "      valar on"
+  exit 0
+fi
 run_step on on
 
 echo

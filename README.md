@@ -62,7 +62,8 @@ sh install.sh
 8. On a terminal, runs the setup with the `valar` it just installed: `valar login`,
    `valar org-policy` (your organization's installation defaults), `valar proxy enable` and
    `valar configure --quota-first` when those defaults say so, then `valar on`, where you
-   pick your tools. It stops at the first step that fails and prints the steps left; if the
+   pick your tools; if your organization has turned Valar off, it skips `valar on`. It stops at
+   the first step that fails and prints the steps left; if the
    on-device proxy cannot be installed without administrator rights, ask your IT team to
    install it. With no terminal it only installs and prints the commands that finish the
    setup. A release older than the guided setup installs exactly as before it.

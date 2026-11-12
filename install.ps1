@@ -11,8 +11,8 @@
 # Setup: in a console, the installer then runs `valar login`, reads the organization's
 # installation defaults with `valar org-policy`, runs `valar proxy enable` and
 # `valar configure --quota-first` when those defaults say so, and ends with `valar on`, where
-# you pick your tools. It stops at the first step that fails and prints the steps left. With
-# redirected input (a scripted run) it only installs, and prints the commands that finish it. A
+# you pick your tools, unless the organization has turned Valar off. It stops at the first step
+# that fails and prints the steps left. With redirected input (a scripted run) it only installs, and prints the commands that finish it. A
 # release without the guided setup installs exactly as before it.
 
 # The whole body runs in its own scope: `irm | iex` evaluates in the CALLER's session, and the
@@ -179,6 +179,7 @@
   $runHint = if ($onPath -and ($onPath.Source -eq $bin)) { 'run:' } else { 'open a new terminal, then run:' }
   $policyRead = $false
   $proxy = ''
+  $valarSwitch = ''
   $quotaFirst = ''
 
   # Prints the setup commands from step $from on. Until the policy is read, the two optional
@@ -255,7 +256,10 @@
       'org-policy'  { , @('org-policy') }
       'proxy'       { if ($proxy -eq 'on') { , @('proxy', 'enable') } }
       'quota-first' { if ($quotaFirst -eq 'on') { , @('configure', '--quota-first') } }
-      'on'          { , @('on') }
+      # An organization that has turned Valar off gets no tools turned on: `valar on` would route
+      # them through Valar, and a new machine has not yet learned that the organization switched
+      # it off.
+      'on'          { if ($valarSwitch -ne 'off') { , @('on') } }
     }
     if (-not $stepArgs) { continue }
     $command = "valar $($stepArgs -join ' ')"
@@ -269,6 +273,7 @@
     if ($step -eq 'org-policy') {
       # key=value lines; keys this script does not know are ignored.
       $policy = ConvertFrom-StringData (($policyOut | Where-Object { $_ -match '^[A-Za-z_]+=' }) -join "`n")
+      $valarSwitch = [string]$policy['valar']
       $proxy = [string]$policy['proxy']
       $quotaFirst = [string]$policy['quota_first']
       if (($proxy -notin 'on', 'off') -or ($quotaFirst -notin 'on', 'off')) {
@@ -281,6 +286,13 @@
   }
 
   Write-Host ''
+  if ($valarSwitch -eq 'off') {
+    Write-Host '==> Your organization has turned Valar off, so no tools were turned on.'
+    Write-Host '    Once it is back on, run:'
+    Write-Host '      valar on'
+    $global:LASTEXITCODE = 0
+    return
+  }
   Write-Host "==> valar is set up. For more, $runHint"
   Write-Host '      valar help'
 }
