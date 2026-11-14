@@ -200,7 +200,10 @@
           if (-not $policyRead)  { Write-Host '      valar configure --quota-first   (only if org-policy printed quota_first=on)' }
           elseif ($quotaFirst -eq 'on') { Write-Host '      valar configure --quota-first' }
         }
-        'on'          { Write-Host '      valar on' }
+        'on' {
+          if (-not $policyRead)  { Write-Host '      valar on                        (unless org-policy printed valar=off)' }
+          elseif ($valarSwitch -ne 'off') { Write-Host '      valar on' }
+        }
       }
     }
   }

@@ -242,7 +242,12 @@ print_steps() {
         elif [ "$quota_first" = on ]; then
           echo "      valar configure --quota-first"
         fi ;;
-      on)         echo "      valar on" ;;
+      on)
+        if [ -z "$policy_read" ]; then
+          echo "      valar on                        (unless org-policy printed valar=off)"
+        elif [ "$valar_switch" != off ]; then
+          echo "      valar on"
+        fi ;;
     esac
   done
 }
