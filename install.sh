@@ -334,6 +334,8 @@ if [ "$valar_switch" = off ]; then
   echo "      valar on"
   exit 0
 fi
+# A blank line sets the tool list apart from what the sign-in printed.
+echo
 run_step on on
 
 echo

@@ -268,6 +268,8 @@
     $command = "valar $($stepArgs -join ' ')"
     # Steps run without a heading. Quota first asks nothing, so its output is shown only when it
     # fails.
+    # A blank line sets the tool list apart from what the sign-in printed.
+    if ($step -eq 'on') { Write-Host '' }
     $ErrorActionPreference = 'Continue'
     if ($step -eq 'org-policy') { $policyOut = & $bin @stepArgs }
     elseif ($step -eq 'quota-first') { $stepOut = & $bin @stepArgs 2>&1 }
