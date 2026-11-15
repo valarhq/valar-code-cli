@@ -296,8 +296,6 @@ fi
 echo "==> Setting up valar"
 run_step login login
 
-echo
-echo "==> valar org-policy"
 rc=0
 policy="$("$bin" org-policy </dev/tty)" || rc=$?
 [ "$rc" -eq 0 ] || setup_failed org-policy "valar org-policy" "$rc"
@@ -318,10 +316,17 @@ case "$proxy:$quota_first" in
     setup_failed org-policy "valar org-policy" 1 ;;
 esac
 policy_read=1
-echo "    on-device proxy: $proxy, quota first: $quota_first"
 
 if [ "$proxy" = on ]; then run_step proxy proxy enable; fi
-if [ "$quota_first" = on ]; then run_step quota-first configure --quota-first; fi
+# Quota first asks nothing, so its output is shown only when it fails.
+if [ "$quota_first" = on ]; then
+  rc=0
+  out="$("$bin" configure --quota-first </dev/tty 2>&1)" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf '%s\n' "$out"
+    setup_failed quota-first "valar configure --quota-first" "$rc"
+  fi
+fi
 # An organization that has turned Valar off gets no tools turned on: `valar on` would route them
 # through Valar, and a new machine has not yet learned that the organization switched it off.
 if [ "$valar_switch" = off ]; then

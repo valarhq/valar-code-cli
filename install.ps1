@@ -266,13 +266,22 @@
     }
     if (-not $stepArgs) { continue }
     $command = "valar $($stepArgs -join ' ')"
-    Write-Host ''
-    Write-Host "==> $command"
+    # The policy read and quota first ask nothing, so they run without a heading, and quota
+    # first's output is shown only when it fails.
+    if ($step -notin 'org-policy', 'quota-first') {
+      Write-Host ''
+      Write-Host "==> $command"
+    }
     $ErrorActionPreference = 'Continue'
-    if ($step -eq 'org-policy') { $policyOut = & $bin @stepArgs } else { & $bin @stepArgs }
+    if ($step -eq 'org-policy') { $policyOut = & $bin @stepArgs }
+    elseif ($step -eq 'quota-first') { $stepOut = & $bin @stepArgs 2>&1 }
+    else { & $bin @stepArgs }
     $rc = $LASTEXITCODE
     $ErrorActionPreference = 'Stop'
-    if ($rc -ne 0) { Stop-Setup $step $command $rc; return }
+    if ($rc -ne 0) {
+      if ($step -eq 'quota-first') { $stepOut | ForEach-Object { Write-Host "$_" } }
+      Stop-Setup $step $command $rc; return
+    }
     if ($step -eq 'org-policy') {
       # key=value lines; keys this script does not know are ignored.
       $policy = ConvertFrom-StringData (($policyOut | Where-Object { $_ -match '^[A-Za-z_]+=' }) -join "`n")
@@ -284,7 +293,6 @@
         Stop-Setup $step $command 1; return
       }
       $policyRead = $true
-      Write-Host "    on-device proxy: $proxy, quota first: $quotaFirst"
     }
   }
 
