@@ -53,7 +53,7 @@
   $asset = "valar-windows-$arch.exe"
   # Release downloads are unmetered, unlike the API (install.sh uses the same URLs).
   $base  = "https://github.com/$repo/releases/download/$version"
-  Write-Host "==> valar $version for windows/$arch"
+  Write-Host "valar $version for windows/$arch"
 
   $tmp = Join-Path ([IO.Path]::GetTempPath()) "valar-install-$PID"
   New-Item -ItemType Directory -Force $tmp | Out-Null
@@ -215,7 +215,7 @@
   # close the engineer's console.
   function Stop-Setup([string]$step, [string]$command, [int]$code) {
     Write-Host ''
-    Write-Host "==> Setup stopped: '$command' did not finish (exit code $code)."
+    Write-Host "Setup stopped: '$command' did not finish (exit code $code)."
     if ($step -eq 'proxy') {
       Write-Host '    The on-device proxy needs administrator rights on this machine.'
       Write-Host '    If you cannot give them, ask your IT team to install it.'
@@ -242,7 +242,7 @@
 
   if ([Console]::IsInputRedirected) {
     Write-Host ''
-    Write-Host "==> No terminal, so the setup did not run. To finish it, $runHint"
+    Write-Host "No terminal, so the setup did not run. To finish it, $runHint"
     Write-Steps 'login'
     $global:LASTEXITCODE = 0
     return
@@ -252,6 +252,7 @@
   # console for its questions. Native stderr must not become a terminating error under
   # $ErrorActionPreference = 'Stop', so each call runs with Continue and is judged by its exit
   # code alone.
+  Write-Host ''
   foreach ($step in 'login', 'org-policy', 'proxy', 'quota-first', 'on') {
     $stepArgs = switch ($step) {
       'login'       { , @('login') }
@@ -265,12 +266,8 @@
     }
     if (-not $stepArgs) { continue }
     $command = "valar $($stepArgs -join ' ')"
-    # The policy read and quota first ask nothing, so they run without a heading, and quota
-    # first's output is shown only when it fails.
-    if ($step -notin 'org-policy', 'quota-first') {
-      Write-Host ''
-      Write-Host "==> $command"
-    }
+    # Steps run without a heading. Quota first asks nothing, so its output is shown only when it
+    # fails.
     $ErrorActionPreference = 'Continue'
     if ($step -eq 'org-policy') { $policyOut = & $bin @stepArgs }
     elseif ($step -eq 'quota-first') { $stepOut = & $bin @stepArgs 2>&1 }
@@ -297,12 +294,12 @@
 
   Write-Host ''
   if ($valarSwitch -eq 'off') {
-    Write-Host '==> Your organization has turned Valar off, so no tools were turned on.'
+    Write-Host 'Your organization has turned Valar off, so no tools were turned on.'
     Write-Host '    Once it is back on, run:'
     Write-Host '      valar on'
     $global:LASTEXITCODE = 0
     return
   }
-  Write-Host "==> valar is set up. For more, $runHint"
+  Write-Host "valar is set up. For more, $runHint"
   Write-Host '      valar help'
 }

@@ -92,7 +92,7 @@ curl_auth() {
   fi
 }
 
-echo "==> valar $VERSION for $TARGET"
+echo "valar $VERSION for $TARGET"
 
 # ---- download checksums + binary ----
 curl_auth -o "$tmp/checksums.txt" "$base/checksums.txt"
@@ -149,7 +149,7 @@ fi
 if [ -w "$PREFIX" ]; then
   install -m 0755 "$tmp/$TARGET" "$bin"
 else
-  echo "==> $PREFIX is not writable; re-running install step with sudo"
+  echo "$PREFIX is not writable; re-running install step with sudo"
   sudo install -m 0755 "$tmp/$TARGET" "$bin"
 fi
 if [ -n "$prev" ] && [ "$prev" != "$VERSION" ]; then
@@ -190,9 +190,9 @@ fi
 # ---- finish ----
 echo
 if "$bin" --version >/dev/null 2>&1; then
-  echo "==> $($bin --version) installed"
+  echo "$($bin --version) installed"
 else
-  echo "==> valar installed (run 'valar --version' from a new shell)"
+  echo "valar installed (run 'valar --version' from a new shell)"
 fi
 
 # Warn if a DIFFERENT valar earlier on PATH will shadow the one we just installed
@@ -257,7 +257,7 @@ print_steps() {
 # lane when the organization chose the proxy.
 setup_failed() {
   echo
-  echo "==> Setup stopped: '$2' did not finish (exit code $3)."
+  echo "Setup stopped: '$2' did not finish (exit code $3)."
   if [ "$1" = proxy ]; then
     echo "    The on-device proxy needs administrator rights on this machine."
     echo "    If you cannot give them, ask your IT team to install it."
@@ -270,8 +270,6 @@ setup_failed() {
 run_step() {
   step=$1
   shift
-  echo
-  echo "==> valar $*"
   rc=0
   "$bin" "$@" </dev/tty || rc=$?
   [ "$rc" -eq 0 ] || setup_failed "$step" "valar $*" "$rc"
@@ -288,11 +286,12 @@ fi
 
 if ! ( : </dev/tty ) 2>/dev/null; then
   echo
-  echo "==> No terminal, so the setup did not run. To finish it, $run_hint"
+  echo "No terminal, so the setup did not run. To finish it, $run_hint"
   print_steps login
   exit 0
 fi
 
+echo
 run_step login login
 
 rc=0
@@ -330,7 +329,7 @@ fi
 # through Valar, and a new machine has not yet learned that the organization switched it off.
 if [ "$valar_switch" = off ]; then
   echo
-  echo "==> Your organization has turned Valar off, so no tools were turned on."
+  echo "Your organization has turned Valar off, so no tools were turned on."
   echo "    Once it is back on, run:"
   echo "      valar on"
   exit 0
@@ -338,5 +337,5 @@ fi
 run_step on on
 
 echo
-echo "==> valar is set up. For more, $run_hint"
+echo "valar is set up. For more, $run_hint"
 echo "      valar help"
