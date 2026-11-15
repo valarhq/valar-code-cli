@@ -286,14 +286,13 @@ if ! "$bin" org-policy --help </dev/null >/dev/null 2>&1 \
   exit 0
 fi
 
-echo
 if ! ( : </dev/tty ) 2>/dev/null; then
+  echo
   echo "==> No terminal, so the setup did not run. To finish it, $run_hint"
   print_steps login
   exit 0
 fi
 
-echo "==> Setting up valar"
 run_step login login
 
 rc=0

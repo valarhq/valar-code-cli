@@ -240,15 +240,14 @@
     return
   }
 
-  Write-Host ''
   if ([Console]::IsInputRedirected) {
+    Write-Host ''
     Write-Host "==> No terminal, so the setup did not run. To finish it, $runHint"
     Write-Steps 'login'
     $global:LASTEXITCODE = 0
     return
   }
 
-  Write-Host '==> Setting up valar'
   # Each step runs as a plain statement, not inside a function or a capture, so valar gets this
   # console for its questions. Native stderr must not become a terminating error under
   # $ErrorActionPreference = 'Stop', so each call runs with Continue and is judged by its exit
