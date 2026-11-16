@@ -63,10 +63,10 @@ sh install.sh
    `valar org-policy` (your organization's installation defaults), `valar proxy enable` and
    `valar configure --quota-first` when those defaults say so, then `valar on`, where you
    pick your tools; if your organization has turned Valar off, it skips `valar on`. It stops at
-   the first step that fails and prints the steps left; if the
-   on-device proxy cannot be installed without administrator rights, ask your IT team to
-   install it. With no terminal it only installs and prints the commands that finish the
-   setup. A release older than the guided setup installs exactly as before it.
+   the first step that fails and prints the steps left. With no terminal, with its output
+   going to a log, or with `VALAR_NO_SETUP=1` (for example when re-running it to upgrade) it
+   only installs and prints the commands that finish the setup. `VALAR_VERBOSE=1` prints every
+   step in full. A release older than the guided setup installs exactly as before it.
    `install.ps1` does the same on Windows.
 
 Dependencies: `curl`, `sha256sum`, `uname`. `cosign` is optional.

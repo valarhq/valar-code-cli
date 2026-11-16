@@ -26,11 +26,9 @@
 # installation defaults with `valar org-policy`, runs `valar proxy enable` and
 # `valar configure --quota-first` when those defaults say so, and ends with `valar on`, where
 # you pick your tools, unless the organization has turned Valar off. It stops at the first step
-# that fails and prints the steps left. A config an older or newer valar wrote is first brought
-# to this one with `valar upgrade`, and a machine already set up gets the new binary only. With no
-# terminal, with output to a log, or with VALAR_NO_SETUP=1 it only installs, and prints the
-# commands that finish the setup. A release without the guided setup installs exactly as before
-# it.
+# that fails and prints the steps left. With no terminal, with output to a log, or with
+# VALAR_NO_SETUP=1 (a re-run to upgrade, say) it only installs, and prints the commands that
+# finish the setup. A release without the guided setup installs exactly as before it.
 #
 # Install only, without the setup:
 #   curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | VALAR_NO_SETUP=1 sh
@@ -235,11 +233,10 @@ quota_first=""
 valar_switch=""
 print_steps() {
   listing=""
-  for s in upgrade login org-policy proxy quota-first on; do
+  for s in login org-policy proxy quota-first on; do
     [ "$s" = "$1" ] && listing=1
     [ -n "$listing" ] || continue
     case "$s" in
-      upgrade)    echo "      valar upgrade" ;;
       login)      echo "      valar login" ;;
       org-policy) echo "      valar org-policy" ;;
       proxy)
@@ -288,7 +285,7 @@ spin_start() {
   (
     i=0
     while :; do
-      sleep 0.4
+      sleep 1
       case $i in 0) d='.  ' ;; 1) d='.. ' ;; *) d='...' ;; esac
       printf '\rSetting up%s\r' "$d"
       i=$(( (i + 1) % 3 ))
@@ -352,27 +349,10 @@ if [ -z "$interactive" ]; then
   exit 0
 fi
 
-# Where this machine stands, from `valar status --json`, which only reads: 13 is a config another
-# valar wrote, which `valar upgrade` brings to this one first; 0, 11 and 12 are a machine already
-# routed through Valar, where re-running the installer is how to upgrade, so the setup is not
-# repeated.
-setup_state() {
-  rc=0
-  "$bin" status --json </dev/null >/dev/null 2>&1 || rc=$?
-}
-setup_state
-if [ "$rc" -eq 13 ]; then
-  echo
-  run_step upgrade upgrade
-  setup_state
-fi
-case "$rc" in
-  0|11|12)
-    echo
-    echo "valar is already set up on this machine. To check it, $run_hint"
-    echo "      valar status"
-    exit 0 ;;
-esac
+
+# The steps run the version just installed: an update offer before one of them would replace a
+# pinned VALAR_VERSION with the latest release.
+export VALAR_NO_UPDATE_CHECK=1
 
 # VALAR_VERBOSE=1 reaches each step through the environment, which then prints every check;
 # the installer shows all of each step's output, with no rolling line. A release that predates
