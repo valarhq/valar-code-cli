@@ -8,13 +8,17 @@
 #   VALAR_PREFIX   install directory (default: %USERPROFILE%\.local\bin)
 #   GITHUB_TOKEN   optional; lifts the GitHub API rate limit
 #   VALAR_VERBOSE  1 prints every setup step in full (each `valar` step inherits it)
+#   VALAR_NO_SETUP 1 installs only, without the setup
 #
 # Setup: in a console, the installer then runs `valar login`, reads the organization's
 # installation defaults with `valar org-policy`, runs `valar proxy enable` and
 # `valar configure --quota-first` when those defaults say so, and ends with `valar on`, where
 # you pick your tools, unless the organization has turned Valar off. It stops at the first step
-# that fails and prints the steps left. With redirected input (a scripted run) it only installs, and prints the commands that finish it. A
-# release without the guided setup installs exactly as before it.
+# that fails and prints the steps left. A config an older or newer valar wrote is first brought
+# to this one with `valar upgrade`, and a machine already set up gets the new binary only. With
+# redirected input or output (a scripted run), or with VALAR_NO_SETUP=1, it only installs, and
+# prints the commands that finish it. A release without the guided setup installs exactly as
+# before it.
 
 # The whole body runs in its own scope: `irm | iex` evaluates in the CALLER's session, and the
 # preference variables, the helper function and the token-bearing headers must not outlive
@@ -187,10 +191,11 @@
   # steps carry the condition that decides them; after, only the steps the policy asks for.
   function Write-Steps([string]$from) {
     $listing = $false
-    foreach ($s in 'login', 'org-policy', 'proxy', 'quota-first', 'on') {
+    foreach ($s in 'upgrade', 'login', 'org-policy', 'proxy', 'quota-first', 'on') {
       if ($s -eq $from) { $listing = $true }
       if (-not $listing) { continue }
       switch ($s) {
+        'upgrade'     { Write-Host '      valar upgrade' }
         'login'       { Write-Host '      valar login' }
         'org-policy'  { Write-Host '      valar org-policy' }
         'proxy' {
@@ -218,14 +223,30 @@
     Complete-Rolling
     Write-Host ''
     Write-Host "Setup stopped: '$command' did not finish (exit code $code)."
-    if ($step -eq 'proxy') {
-      Write-Host '    The on-device proxy needs administrator rights on this machine.'
-      Write-Host '    If you cannot give them, ask your IT team to install it.'
-    }
     Write-Host "    To finish the setup, $runHint"
-    Write-Steps $step
+    # org-policy fails when the sign-in does not work, so the list starts from it.
+    if ($step -eq 'org-policy') { Write-Steps 'login' } else { Write-Steps $step }
     $global:LASTEXITCODE = $code
     if ($PSCommandPath) { exit $code }
+  }
+
+  # The setup runs only for a person at a console, reading it and writing to it: a run with its
+  # input or output redirected (an MDM run, a log), or with VALAR_NO_SETUP=1, only installs.
+  $interactive = -not ($env:VALAR_NO_SETUP -eq '1' -or [Console]::IsInputRedirected -or [Console]::IsOutputRedirected)
+
+  # A binary that does not start here is not an older release: in a console, say so instead of
+  # skipping the setup as if it were one.
+  if ($interactive) {
+    $prevPref = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { $versionOut = & $bin --version 2>&1; $starts = ($LASTEXITCODE -eq 0) } catch { $versionOut = "$_"; $starts = $false } finally { $ErrorActionPreference = $prevPref }
+    if (-not $starts) {
+      Write-Host ''
+      Write-Host "The setup did not run: $bin does not start here."
+      $versionOut | ForEach-Object { Write-Host "    $_" }
+      $global:LASTEXITCODE = 1
+      if ($PSCommandPath) { exit 1 }
+      return
+    }
   }
 
   # A release without the guided setup (no `valar org-policy` or no global `valar on`; v1.1.46
@@ -247,13 +268,32 @@
   # the variable ignores it.
   $verbose = ($env:VALAR_VERBOSE -eq '1')
 
-  if ([Console]::IsInputRedirected) {
+  if (-not $interactive) {
     Write-Host ''
-    Write-Host "No terminal, so the setup did not run. To finish it, $runHint"
+    if ($env:VALAR_NO_SETUP -eq '1') { Write-Host "VALAR_NO_SETUP is set, so the setup did not run. To finish it, $runHint" }
+    else { Write-Host "No terminal, so the setup did not run. To finish it, $runHint" }
     Write-Steps 'login'
     $global:LASTEXITCODE = 0
     return
   }
+
+  # Where this machine stands, from `valar status --json`, which only reads: 13 is a config
+  # another valar wrote, which `valar upgrade` brings to this one first; 0, 11 and 12 are a machine
+  # already routed through Valar, where re-running the installer is how to upgrade, so the setup
+  # is not repeated.
+  function Get-SetupState {
+    $prevPref = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { & $bin status --json 2>&1 | Out-Null; $LASTEXITCODE } catch { -1 } finally { $ErrorActionPreference = $prevPref }
+  }
+  function Write-AlreadySetUp {
+    Write-Host ''
+    Write-Host "valar is already set up on this machine. To check it, $runHint"
+    Write-Host '      valar status'
+    $global:LASTEXITCODE = 0
+  }
+  $state = Get-SetupState
+  if ($state -in 0, 11, 12) { Write-AlreadySetUp; return }
+  $needsUpgrade = ($state -eq 13)
 
   # The steps between the sign-in and the tool list print nothing when they succeed, so a rolling
   # "Setting up" shows they are running. valar shares this console, so its own questions and
@@ -299,8 +339,9 @@
   # $ErrorActionPreference = 'Stop', so each call runs with Continue and is judged by its exit
   # code alone.
   Write-Host ''
-  foreach ($step in 'login', 'org-policy', 'proxy', 'quota-first', 'on') {
+  foreach ($step in 'upgrade', 'login', 'org-policy', 'proxy', 'quota-first', 'on') {
     $stepArgs = switch ($step) {
+      'upgrade'     { if ($needsUpgrade) { , @('upgrade') } }
       'login'       { , @('login') }
       'org-policy'  { , @('org-policy') }
       'proxy'       { if ($proxy -eq 'on') { , @('proxy', 'enable') } }
@@ -317,7 +358,7 @@
     # A blank line sets the tool list apart from what the sign-in printed.
     if ($step -eq 'on') { Complete-Rolling ' done'; Write-Host '' }
     $ErrorActionPreference = 'Continue'
-    if ($step -in 'login', 'on' -or ($verbose -and $step -ne 'org-policy')) {
+    if ($step -in 'upgrade', 'login', 'on' -or ($verbose -and $step -ne 'org-policy')) {
       & $bin @stepArgs
       $rc = $LASTEXITCODE
     } elseif ($verbose) {
@@ -341,6 +382,7 @@
       if ($step -eq 'quota-first' -and -not $verbose) { $stepOut | ForEach-Object { Write-Host "$_" } }
       Stop-Setup $step $command $rc; return
     }
+    if ($step -eq 'upgrade' -and (Get-SetupState) -in 0, 11, 12) { Write-AlreadySetUp; return }
     if ($step -eq 'org-policy') {
       # key=value lines; keys this script does not know are ignored.
       $policy = ConvertFrom-StringData (($policyOut | Where-Object { $_ -match '^[A-Za-z_]+=' }) -join "`n")

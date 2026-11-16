@@ -26,9 +26,14 @@
 # installation defaults with `valar org-policy`, runs `valar proxy enable` and
 # `valar configure --quota-first` when those defaults say so, and ends with `valar on`, where
 # you pick your tools, unless the organization has turned Valar off. It stops at the first step
-# that fails and prints the steps left. With no
-# terminal it only installs, and prints the commands that finish the setup. A release without
-# the guided setup installs exactly as before it.
+# that fails and prints the steps left. A config an older or newer valar wrote is first brought
+# to this one with `valar upgrade`, and a machine already set up gets the new binary only. With no
+# terminal, with output to a log, or with VALAR_NO_SETUP=1 it only installs, and prints the
+# commands that finish the setup. A release without the guided setup installs exactly as before
+# it.
+#
+# Install only, without the setup:
+#   curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | VALAR_NO_SETUP=1 sh
 #
 # Print every setup step in full (each `valar` step inherits VALAR_VERBOSE):
 #   curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | VALAR_VERBOSE=1 sh
@@ -84,7 +89,10 @@ fi
 
 # ---- temp workspace ----
 tmp="$(mktemp -d 2>/dev/null || mktemp -d -t valar)"
-trap '[ -z "${spin_pid:-}" ] || spin_stop; rm -rf "$tmp"' EXIT INT TERM
+trap '[ -z "${spin_pid:-}" ] || spin_stop; rm -rf "$tmp"' EXIT
+# Ctrl-C or a kill ends the install: the EXIT trap cleans up, and no later step runs.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 base="https://github.com/$REPO/releases/download/$VERSION"
 curl_auth() {
@@ -227,10 +235,11 @@ quota_first=""
 valar_switch=""
 print_steps() {
   listing=""
-  for s in login org-policy proxy quota-first on; do
+  for s in upgrade login org-policy proxy quota-first on; do
     [ "$s" = "$1" ] && listing=1
     [ -n "$listing" ] || continue
     case "$s" in
+      upgrade)    echo "      valar upgrade" ;;
       login)      echo "      valar login" ;;
       org-policy) echo "      valar org-policy" ;;
       proxy)
@@ -262,12 +271,9 @@ setup_failed() {
   spin_stop
   echo
   echo "Setup stopped: '$2' did not finish (exit code $3)."
-  if [ "$1" = proxy ]; then
-    echo "    The on-device proxy needs administrator rights on this machine."
-    echo "    If you cannot give them, ask your IT team to install it."
-  fi
   echo "    To finish the setup, $run_hint"
-  print_steps "$1"
+  # org-policy fails when the sign-in does not work, so the list starts from it.
+  if [ "$1" = org-policy ]; then print_steps login; else print_steps "$1"; fi
   exit "$3"
 }
 
@@ -310,6 +316,22 @@ run_step() {
   [ "$rc" -eq 0 ] || setup_failed "$step" "valar $*" "$rc"
 }
 
+# The setup runs only for a person at a terminal, reading it and writing to it: a run whose
+# output goes to a log, or with VALAR_NO_SETUP=1, only installs.
+interactive=1
+if [ "${VALAR_NO_SETUP:-}" = 1 ] || ! [ -t 1 ] || ! ( : </dev/tty ) 2>/dev/null; then
+  interactive=
+fi
+
+# A binary that does not start here (installed for another account, say) is not an older
+# release: at a terminal, say so instead of skipping the setup as if it were one.
+if [ -n "$interactive" ] && ! err="$("$bin" --version </dev/null 2>&1)"; then
+  echo
+  echo "The setup did not run: $bin does not start here."
+  printf '    %s\n' "$err"
+  exit 1
+fi
+
 # A release without the guided setup (no `valar org-policy` or no global `valar on`; v1.1.46
 # and v1.1.47 have the first but not the second) installs exactly as the installer did before
 # the guided setup existed.
@@ -319,12 +341,38 @@ if ! "$bin" org-policy --help </dev/null >/dev/null 2>&1 \
   exit 0
 fi
 
-if ! ( : </dev/tty ) 2>/dev/null; then
+if [ -z "$interactive" ]; then
   echo
-  echo "No terminal, so the setup did not run. To finish it, $run_hint"
+  if [ "${VALAR_NO_SETUP:-}" = 1 ]; then
+    echo "VALAR_NO_SETUP is set, so the setup did not run. To finish it, $run_hint"
+  else
+    echo "No terminal, so the setup did not run. To finish it, $run_hint"
+  fi
   print_steps login
   exit 0
 fi
+
+# Where this machine stands, from `valar status --json`, which only reads: 13 is a config another
+# valar wrote, which `valar upgrade` brings to this one first; 0, 11 and 12 are a machine already
+# routed through Valar, where re-running the installer is how to upgrade, so the setup is not
+# repeated.
+setup_state() {
+  rc=0
+  "$bin" status --json </dev/null >/dev/null 2>&1 || rc=$?
+}
+setup_state
+if [ "$rc" -eq 13 ]; then
+  echo
+  run_step upgrade upgrade
+  setup_state
+fi
+case "$rc" in
+  0|11|12)
+    echo
+    echo "valar is already set up on this machine. To check it, $run_hint"
+    echo "      valar status"
+    exit 0 ;;
+esac
 
 # VALAR_VERBOSE=1 reaches each step through the environment, which then prints every check;
 # the installer shows all of each step's output, with no rolling line. A release that predates
