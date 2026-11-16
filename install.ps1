@@ -214,6 +214,7 @@
   # the code; run through `irm | iex` it returns with $LASTEXITCODE set, since `exit` would
   # close the engineer's console.
   function Stop-Setup([string]$step, [string]$command, [int]$code) {
+    Complete-Rolling
     Write-Host ''
     Write-Host "Setup stopped: '$command' did not finish (exit code $code)."
     if ($step -eq 'proxy') {
@@ -251,7 +252,16 @@
   # The steps between the sign-in and the tool list print nothing when they succeed, so a rolling
   # "Setting up" shows they are running. valar shares this console, so its own questions and
   # output still reach the engineer; the rolling stops for the step once valar has printed.
-  # Only on a console: a log (an MDM run, a redirect) gets no frames.
+  # Only on a console: a log (an MDM run, a redirect) gets no frames. Complete-Rolling leaves the
+  # line as "Setting up..." unless valar has printed since.
+  $script:rollRow = $null
+  function Complete-Rolling {
+    if ($null -eq $script:rollRow) { return }
+    try {
+      if ([Console]::CursorLeft -eq 0 -and [Console]::CursorTop -eq $script:rollRow) { [Console]::Write("`rSetting up...`n") }
+    } catch { }
+    $script:rollRow = $null
+  }
   function Invoke-Rolling([string[]]$stepArgs, [string]$outFile, [string]$errFile) {
     $start = @{ FilePath = $bin; ArgumentList = $stepArgs; NoNewWindow = $true; PassThru = $true }
     if ($outFile) { $start.RedirectStandardOutput = $outFile }
@@ -259,19 +269,16 @@
     $proc = Start-Process @start
     $null = $proc.Handle  # Windows PowerShell 5.1 reports no exit code without it
     $roll = -not [Console]::IsOutputRedirected
-    $drawn = $false
     $i = 0
-    try { $row = [Console]::CursorTop } catch { $roll = $false }
+    try { if ($roll) { $row = [Console]::CursorTop; $script:rollRow = $row } } catch { $roll = $false }
     while (-not $proc.WaitForExit(400)) {
       if (-not $roll) { continue }
       try {
         if ([Console]::CursorLeft -ne 0 -or [Console]::CursorTop -ne $row) { $roll = $false; continue }
         [Console]::Write("`rSetting up" + ('.' * ($i % 3 + 1)).PadRight(3) + "`r")
-        $drawn = $true
         $i++
       } catch { $roll = $false }
     }
-    if ($drawn -and $roll) { [Console]::Write("`r" + (' ' * 13) + "`r") }
     $proc.WaitForExit()
     return $proc.ExitCode
   }
@@ -297,7 +304,7 @@
     # Steps run without a heading. Quota first asks nothing, so its output is shown only when it
     # fails.
     # A blank line sets the tool list apart from what the sign-in printed.
-    if ($step -eq 'on') { Write-Host '' }
+    if ($step -eq 'on') { Complete-Rolling; Write-Host '' }
     $ErrorActionPreference = 'Continue'
     if ($step -in 'login', 'on') {
       & $bin @stepArgs
@@ -334,6 +341,7 @@
     }
   }
 
+  Complete-Rolling
   Write-Host ''
   if ($valarSwitch -eq 'off') {
     Write-Host 'Your organization has turned Valar off, so no tools were turned on.'

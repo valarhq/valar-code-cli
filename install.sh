@@ -270,8 +270,10 @@ setup_failed() {
 
 # The steps between the sign-in and the tool list print nothing when they succeed, so a rolling
 # "Setting up" shows they are running. Only on a terminal: a log (an MDM run, a redirect) gets
-# no frames. Each frame ends at the start of the line, and spin_stop blanks it.
+# no frames. Each frame ends at the start of the line. The first spin_stop leaves the line as
+# "Setting up..."; a later one, after the proxy step, blanks its line.
 spin_pid=
+spin_kept=
 spin_start() {
   [ -t 1 ] || return 0
   (
@@ -290,7 +292,12 @@ spin_stop() {
   kill "$spin_pid" 2>/dev/null || :
   wait "$spin_pid" 2>/dev/null || :
   spin_pid=
-  printf '\r%13s\r' ''
+  if [ -z "$spin_kept" ]; then
+    spin_kept=1
+    printf '\rSetting up...\n'
+  else
+    printf '\r%13s\r' ''
+  fi
 }
 
 run_step() {
