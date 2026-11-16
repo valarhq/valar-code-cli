@@ -81,7 +81,7 @@ fi
 
 # ---- temp workspace ----
 tmp="$(mktemp -d 2>/dev/null || mktemp -d -t valar)"
-trap 'rm -rf "$tmp"' EXIT INT TERM
+trap '[ -z "${spin_pid:-}" ] || spin_stop; rm -rf "$tmp"' EXIT INT TERM
 
 base="https://github.com/$REPO/releases/download/$VERSION"
 curl_auth() {
@@ -256,6 +256,7 @@ print_steps() {
 # remaining steps may depend on it, and a failed proxy step must not leave tools on the direct
 # lane when the organization chose the proxy.
 setup_failed() {
+  spin_stop
   echo
   echo "Setup stopped: '$2' did not finish (exit code $3)."
   if [ "$1" = proxy ]; then
@@ -265,6 +266,31 @@ setup_failed() {
   echo "    To finish the setup, $run_hint"
   print_steps "$1"
   exit "$3"
+}
+
+# The steps between the sign-in and the tool list print nothing when they succeed, so a rolling
+# "Setting up" shows they are running. Only on a terminal: a log (an MDM run, a redirect) gets
+# no frames. Each frame ends at the start of the line, and spin_stop blanks it.
+spin_pid=
+spin_start() {
+  [ -t 1 ] || return 0
+  (
+    i=0
+    while :; do
+      sleep 0.4
+      case $i in 0) d='.  ' ;; 1) d='.. ' ;; *) d='...' ;; esac
+      printf '\rSetting up%s\r' "$d"
+      i=$(( (i + 1) % 3 ))
+    done
+  ) &
+  spin_pid=$!
+}
+spin_stop() {
+  [ -n "$spin_pid" ] || return 0
+  kill "$spin_pid" 2>/dev/null || :
+  wait "$spin_pid" 2>/dev/null || :
+  spin_pid=
+  printf '\r%13s\r' ''
 }
 
 run_step() {
@@ -294,9 +320,14 @@ fi
 echo
 run_step login login
 
+spin_start
 rc=0
-policy="$("$bin" org-policy </dev/tty)" || rc=$?
-[ "$rc" -eq 0 ] || setup_failed org-policy "valar org-policy" "$rc"
+policy="$("$bin" org-policy </dev/tty 2>"$tmp/org-policy.err")" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  spin_stop
+  cat "$tmp/org-policy.err" >&2
+  setup_failed org-policy "valar org-policy" "$rc"
+fi
 # key=value lines; keys this script does not know are skipped.
 while IFS='=' read -r key value; do
   case "$key" in
@@ -315,16 +346,23 @@ case "$proxy:$quota_first" in
 esac
 policy_read=1
 
-if [ "$proxy" = on ]; then run_step proxy proxy enable; fi
+# The proxy step may ask for the administrator password, so nothing rolls over its prompt.
+if [ "$proxy" = on ]; then
+  spin_stop
+  run_step proxy proxy enable
+  spin_start
+fi
 # Quota first asks nothing, so its output is shown only when it fails.
 if [ "$quota_first" = on ]; then
   rc=0
   out="$("$bin" configure --quota-first </dev/tty 2>&1)" || rc=$?
   if [ "$rc" -ne 0 ]; then
+    spin_stop
     printf '%s\n' "$out"
     setup_failed quota-first "valar configure --quota-first" "$rc"
   fi
 fi
+spin_stop
 # An organization that has turned Valar off gets no tools turned on: `valar on` would route them
 # through Valar, and a new machine has not yet learned that the organization switched it off.
 if [ "$valar_switch" = off ]; then

@@ -248,8 +248,36 @@
     return
   }
 
-  # Each step runs as a plain statement, not inside a function or a capture, so valar gets this
-  # console for its questions. Native stderr must not become a terminating error under
+  # The steps between the sign-in and the tool list print nothing when they succeed, so a rolling
+  # "Setting up" shows they are running. valar shares this console, so its own questions and
+  # output still reach the engineer; the rolling stops for the step once valar has printed.
+  # Only on a console: a log (an MDM run, a redirect) gets no frames.
+  function Invoke-Rolling([string[]]$stepArgs, [string]$outFile, [string]$errFile) {
+    $start = @{ FilePath = $bin; ArgumentList = $stepArgs; NoNewWindow = $true; PassThru = $true }
+    if ($outFile) { $start.RedirectStandardOutput = $outFile }
+    if ($errFile) { $start.RedirectStandardError = $errFile }
+    $proc = Start-Process @start
+    $null = $proc.Handle  # Windows PowerShell 5.1 reports no exit code without it
+    $roll = -not [Console]::IsOutputRedirected
+    $drawn = $false
+    $i = 0
+    try { $row = [Console]::CursorTop } catch { $roll = $false }
+    while (-not $proc.WaitForExit(400)) {
+      if (-not $roll) { continue }
+      try {
+        if ([Console]::CursorLeft -ne 0 -or [Console]::CursorTop -ne $row) { $roll = $false; continue }
+        [Console]::Write("`rSetting up" + ('.' * ($i % 3 + 1)).PadRight(3) + "`r")
+        $drawn = $true
+        $i++
+      } catch { $roll = $false }
+    }
+    if ($drawn -and $roll) { [Console]::Write("`r" + (' ' * 13) + "`r") }
+    $proc.WaitForExit()
+    return $proc.ExitCode
+  }
+
+  # Login and the tool list run as plain statements, not inside a function or a capture, so valar
+  # gets this console for its questions. Native stderr must not become a terminating error under
   # $ErrorActionPreference = 'Stop', so each call runs with Continue and is judged by its exit
   # code alone.
   Write-Host ''
@@ -271,10 +299,22 @@
     # A blank line sets the tool list apart from what the sign-in printed.
     if ($step -eq 'on') { Write-Host '' }
     $ErrorActionPreference = 'Continue'
-    if ($step -eq 'org-policy') { $policyOut = & $bin @stepArgs }
-    elseif ($step -eq 'quota-first') { $stepOut = & $bin @stepArgs 2>&1 }
-    else { & $bin @stepArgs }
-    $rc = $LASTEXITCODE
+    if ($step -in 'login', 'on') {
+      & $bin @stepArgs
+      $rc = $LASTEXITCODE
+    } elseif ($step -eq 'org-policy') {
+      $outFile = [IO.Path]::GetTempFileName()
+      $rc = Invoke-Rolling $stepArgs $outFile
+      $policyOut = Get-Content $outFile
+      Remove-Item $outFile -ErrorAction SilentlyContinue
+    } elseif ($step -eq 'quota-first') {
+      $outFile = [IO.Path]::GetTempFileName(); $errFile = [IO.Path]::GetTempFileName()
+      $rc = Invoke-Rolling $stepArgs $outFile $errFile
+      $stepOut = @(Get-Content $outFile) + @(Get-Content $errFile)
+      Remove-Item $outFile, $errFile -ErrorAction SilentlyContinue
+    } else {
+      $rc = Invoke-Rolling $stepArgs
+    }
     $ErrorActionPreference = 'Stop'
     if ($rc -ne 0) {
       if ($step -eq 'quota-first') { $stepOut | ForEach-Object { Write-Host "$_" } }
