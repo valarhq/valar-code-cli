@@ -273,10 +273,10 @@ setup_failed() {
 
 # The steps between the sign-in and the tool list print nothing when they succeed, so a rolling
 # "Setting up" shows they are running. Only on a terminal: a log (an MDM run, a redirect) gets
-# no frames. Each frame ends at the start of the line. The first spin_stop leaves the line as
-# "Setting up..."; a later one, after the proxy step, blanks its line.
+# no frames. Each frame ends at the start of the line. spin_stop ends it as "Setting up... done"
+# once every step succeeded, as "Setting up..." when one failed, and blanks it to pause for the
+# proxy step.
 spin_pid=
-spin_kept=
 spin_start() {
   [ -t 1 ] && [ -z "$verbose" ] || return 0
   (
@@ -295,12 +295,11 @@ spin_stop() {
   kill "$spin_pid" 2>/dev/null || :
   wait "$spin_pid" 2>/dev/null || :
   spin_pid=
-  if [ -z "$spin_kept" ]; then
-    spin_kept=1
-    printf '\rSetting up...\n'
-  else
-    printf '\r%13s\r' ''
-  fi
+  case "${1:-}" in
+    done)  printf '\rSetting up... done\n' ;;
+    pause) printf '\r%13s\r' '' ;;
+    *)     printf '\rSetting up...\n' ;;
+  esac
 }
 
 run_step() {
@@ -365,7 +364,7 @@ policy_read=1
 
 # The proxy step may ask for the administrator password, so nothing rolls over its prompt.
 if [ "$proxy" = on ]; then
-  spin_stop
+  spin_stop pause
   run_step proxy proxy enable
   spin_start
 fi
@@ -380,7 +379,7 @@ if [ "$quota_first" = on ]; then
   fi
   [ -z "$verbose" ] || printf '%s\n' "$out"
 fi
-spin_stop
+spin_stop done
 # An organization that has turned Valar off gets no tools turned on: `valar on` would route them
 # through Valar, and a new machine has not yet learned that the organization switched it off.
 if [ "$valar_switch" = off ]; then

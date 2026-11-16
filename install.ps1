@@ -258,13 +258,18 @@
   # The steps between the sign-in and the tool list print nothing when they succeed, so a rolling
   # "Setting up" shows they are running. valar shares this console, so its own questions and
   # output still reach the engineer; the rolling stops for the step once valar has printed.
-  # Only on a console: a log (an MDM run, a redirect) gets no frames. Complete-Rolling leaves the
-  # line as "Setting up..." unless valar has printed since.
+  # Only on a console: a log (an MDM run, a redirect) gets no frames. Complete-Rolling ends the
+  # line as "Setting up... done" once every step succeeded; after a failure it leaves
+  # "Setting up..." only where the rolling line still stands.
   $script:rollRow = $null
-  function Complete-Rolling {
+  function Complete-Rolling([string]$suffix = '') {
     if ($null -eq $script:rollRow) { return }
     try {
-      if ([Console]::CursorLeft -eq 0 -and [Console]::CursorTop -eq $script:rollRow) { [Console]::Write("`rSetting up...`n") }
+      if ([Console]::CursorLeft -eq 0 -and [Console]::CursorTop -eq $script:rollRow) { [Console]::Write("`rSetting up...$suffix`n") }
+      elseif ($suffix) {
+        if ([Console]::CursorLeft -ne 0) { [Console]::Write("`n") }
+        [Console]::Write("Setting up...$suffix`n")
+      }
     } catch { }
     $script:rollRow = $null
   }
@@ -310,7 +315,7 @@
     # Steps run without a heading. Quota first asks nothing, so its output is shown only when it
     # fails.
     # A blank line sets the tool list apart from what the sign-in printed.
-    if ($step -eq 'on') { Complete-Rolling; Write-Host '' }
+    if ($step -eq 'on') { Complete-Rolling ' done'; Write-Host '' }
     $ErrorActionPreference = 'Continue'
     if ($step -in 'login', 'on' -or ($verbose -and $step -ne 'org-policy')) {
       & $bin @stepArgs
@@ -350,7 +355,7 @@
     }
   }
 
-  Complete-Rolling
+  Complete-Rolling ' done'
   Write-Host ''
   if ($valarSwitch -eq 'off') {
     Write-Host 'Your organization has turned Valar off, so no tools were turned on.'
