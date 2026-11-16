@@ -2,11 +2,12 @@
 #
 #   irm https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.ps1 | iex
 #
-# Knobs are env vars (a piped script takes no parameters), the same three as install.sh:
+# Knobs are env vars (a piped script takes no parameters), the same as install.sh's:
 #
 #   VALAR_VERSION  release tag to install (default: the latest release)
 #   VALAR_PREFIX   install directory (default: %USERPROFILE%\.local\bin)
 #   GITHUB_TOKEN   optional; lifts the GitHub API rate limit
+#   VALAR_VERBOSE  1 prints every setup step in full (each `valar` command runs with --verbose)
 #
 # Setup: in a console, the installer then runs `valar login`, reads the organization's
 # installation defaults with `valar org-policy`, runs `valar proxy enable` and
@@ -241,6 +242,14 @@
     return
   }
 
+  # VALAR_VERBOSE=1 runs each step with --verbose and shows all of its output, with no rolling
+  # line. A release without --verbose runs its steps as they are.
+  $verbose = @()
+  if ($env:VALAR_VERBOSE -eq '1') {
+    $prevPref = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    try { & $bin --verbose --version 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { $verbose = @('--verbose') } } catch { } finally { $ErrorActionPreference = $prevPref }
+  }
+
   if ([Console]::IsInputRedirected) {
     Write-Host ''
     Write-Host "No terminal, so the setup did not run. To finish it, $runHint"
@@ -301,13 +310,17 @@
     }
     if (-not $stepArgs) { continue }
     $command = "valar $($stepArgs -join ' ')"
+    $stepArgs = @($verbose) + @($stepArgs)
     # Steps run without a heading. Quota first asks nothing, so its output is shown only when it
     # fails.
     # A blank line sets the tool list apart from what the sign-in printed.
     if ($step -eq 'on') { Complete-Rolling; Write-Host '' }
     $ErrorActionPreference = 'Continue'
-    if ($step -in 'login', 'on') {
+    if ($step -in 'login', 'on' -or ($verbose -and $step -ne 'org-policy')) {
       & $bin @stepArgs
+      $rc = $LASTEXITCODE
+    } elseif ($verbose) {
+      $policyOut = & $bin @stepArgs
       $rc = $LASTEXITCODE
     } elseif ($step -eq 'org-policy') {
       $outFile = [IO.Path]::GetTempFileName()
@@ -324,7 +337,7 @@
     }
     $ErrorActionPreference = 'Stop'
     if ($rc -ne 0) {
-      if ($step -eq 'quota-first') { $stepOut | ForEach-Object { Write-Host "$_" } }
+      if ($step -eq 'quota-first' -and -not $verbose) { $stepOut | ForEach-Object { Write-Host "$_" } }
       Stop-Setup $step $command $rc; return
     }
     if ($step -eq 'org-policy') {

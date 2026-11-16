@@ -29,6 +29,9 @@
 # that fails and prints the steps left. With no
 # terminal it only installs, and prints the commands that finish the setup. A release without
 # the guided setup installs exactly as before it.
+#
+# Print every setup step in full (each `valar` command runs with --verbose):
+#   curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | VALAR_VERBOSE=1 sh
 
 set -eu
 
@@ -275,7 +278,7 @@ setup_failed() {
 spin_pid=
 spin_kept=
 spin_start() {
-  [ -t 1 ] || return 0
+  [ -t 1 ] && [ -z "$verbose" ] || return 0
   (
     i=0
     while :; do
@@ -304,7 +307,7 @@ run_step() {
   step=$1
   shift
   rc=0
-  "$bin" "$@" </dev/tty || rc=$?
+  "$bin" $verbose "$@" </dev/tty || rc=$?
   [ "$rc" -eq 0 ] || setup_failed "$step" "valar $*" "$rc"
 }
 
@@ -324,17 +327,25 @@ if ! ( : </dev/tty ) 2>/dev/null; then
   exit 0
 fi
 
+# VALAR_VERBOSE=1 runs each step with --verbose and shows all of its output, with no rolling
+# line. A release without --verbose runs its steps as they are.
+verbose=
+if [ "${VALAR_VERBOSE:-}" = 1 ] && "$bin" --verbose --version </dev/null >/dev/null 2>&1; then
+  verbose=--verbose
+fi
+
 echo
 run_step login login
 
 spin_start
 rc=0
-policy="$("$bin" org-policy </dev/tty 2>"$tmp/org-policy.err")" || rc=$?
+policy="$("$bin" $verbose org-policy </dev/tty 2>"$tmp/org-policy.err")" || rc=$?
 if [ "$rc" -ne 0 ]; then
   spin_stop
   cat "$tmp/org-policy.err" >&2
   setup_failed org-policy "valar org-policy" "$rc"
 fi
+[ -z "$verbose" ] || cat "$tmp/org-policy.err" >&2
 # key=value lines; keys this script does not know are skipped.
 while IFS='=' read -r key value; do
   case "$key" in
@@ -362,12 +373,13 @@ fi
 # Quota first asks nothing, so its output is shown only when it fails.
 if [ "$quota_first" = on ]; then
   rc=0
-  out="$("$bin" configure --quota-first </dev/tty 2>&1)" || rc=$?
+  out="$("$bin" $verbose configure --quota-first </dev/tty 2>&1)" || rc=$?
   if [ "$rc" -ne 0 ]; then
     spin_stop
     printf '%s\n' "$out"
     setup_failed quota-first "valar configure --quota-first" "$rc"
   fi
+  [ -z "$verbose" ] || printf '%s\n' "$out"
 fi
 spin_stop
 # An organization that has turned Valar off gets no tools turned on: `valar on` would route them
