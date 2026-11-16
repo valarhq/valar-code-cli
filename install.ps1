@@ -7,7 +7,7 @@
 #   VALAR_VERSION  release tag to install (default: the latest release)
 #   VALAR_PREFIX   install directory (default: %USERPROFILE%\.local\bin)
 #   GITHUB_TOKEN   optional; lifts the GitHub API rate limit
-#   VALAR_VERBOSE  1 prints every setup step in full (each `valar` command runs with --verbose)
+#   VALAR_VERBOSE  1 prints every setup step in full (each `valar` step inherits it)
 #
 # Setup: in a console, the installer then runs `valar login`, reads the organization's
 # installation defaults with `valar org-policy`, runs `valar proxy enable` and
@@ -242,13 +242,10 @@
     return
   }
 
-  # VALAR_VERBOSE=1 runs each step with --verbose and shows all of its output, with no rolling
-  # line. A release without --verbose runs its steps as they are.
-  $verbose = @()
-  if ($env:VALAR_VERBOSE -eq '1') {
-    $prevPref = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    try { & $bin --verbose --version 2>&1 | Out-Null; if ($LASTEXITCODE -eq 0) { $verbose = @('--verbose') } } catch { } finally { $ErrorActionPreference = $prevPref }
-  }
+  # VALAR_VERBOSE=1 reaches each step through the environment, which then prints every check;
+  # the installer shows all of each step's output, with no rolling line. A release that predates
+  # the variable ignores it.
+  $verbose = ($env:VALAR_VERBOSE -eq '1')
 
   if ([Console]::IsInputRedirected) {
     Write-Host ''
@@ -310,7 +307,6 @@
     }
     if (-not $stepArgs) { continue }
     $command = "valar $($stepArgs -join ' ')"
-    $stepArgs = @($verbose) + @($stepArgs)
     # Steps run without a heading. Quota first asks nothing, so its output is shown only when it
     # fails.
     # A blank line sets the tool list apart from what the sign-in printed.

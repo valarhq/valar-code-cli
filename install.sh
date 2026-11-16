@@ -30,7 +30,7 @@
 # terminal it only installs, and prints the commands that finish the setup. A release without
 # the guided setup installs exactly as before it.
 #
-# Print every setup step in full (each `valar` command runs with --verbose):
+# Print every setup step in full (each `valar` step inherits VALAR_VERBOSE):
 #   curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | VALAR_VERBOSE=1 sh
 
 set -eu
@@ -307,7 +307,7 @@ run_step() {
   step=$1
   shift
   rc=0
-  "$bin" $verbose "$@" </dev/tty || rc=$?
+  "$bin" "$@" </dev/tty || rc=$?
   [ "$rc" -eq 0 ] || setup_failed "$step" "valar $*" "$rc"
 }
 
@@ -327,19 +327,18 @@ if ! ( : </dev/tty ) 2>/dev/null; then
   exit 0
 fi
 
-# VALAR_VERBOSE=1 runs each step with --verbose and shows all of its output, with no rolling
-# line. A release without --verbose runs its steps as they are.
+# VALAR_VERBOSE=1 reaches each step through the environment, which then prints every check;
+# the installer shows all of each step's output, with no rolling line. A release that predates
+# the variable ignores it.
 verbose=
-if [ "${VALAR_VERBOSE:-}" = 1 ] && "$bin" --verbose --version </dev/null >/dev/null 2>&1; then
-  verbose=--verbose
-fi
+[ "${VALAR_VERBOSE:-}" != 1 ] || verbose=1
 
 echo
 run_step login login
 
 spin_start
 rc=0
-policy="$("$bin" $verbose org-policy </dev/tty 2>"$tmp/org-policy.err")" || rc=$?
+policy="$("$bin" org-policy </dev/tty 2>"$tmp/org-policy.err")" || rc=$?
 if [ "$rc" -ne 0 ]; then
   spin_stop
   cat "$tmp/org-policy.err" >&2
@@ -373,7 +372,7 @@ fi
 # Quota first asks nothing, so its output is shown only when it fails.
 if [ "$quota_first" = on ]; then
   rc=0
-  out="$("$bin" $verbose configure --quota-first </dev/tty 2>&1)" || rc=$?
+  out="$("$bin" configure --quota-first </dev/tty 2>&1)" || rc=$?
   if [ "$rc" -ne 0 ]; then
     spin_stop
     printf '%s\n' "$out"
