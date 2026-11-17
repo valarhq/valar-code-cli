@@ -11,23 +11,26 @@ here by a release workflow, signed with Sigstore/cosign.
 ## Install
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | sh
+curl -fsSL https://app.valarhq.ai/cli/install.sh | sh
 ```
 
 Pin a version:
 
 ```sh
-VALAR_VERSION=valar-cli-v1.2.3 sh -c "$(curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh)"
+VALAR_VERSION=valar-cli-v1.2.3 sh -c "$(curl -fsSL https://app.valarhq.ai/cli/install.sh)"
 ```
 
 Windows (PowerShell; installs `valar.exe` to `%USERPROFILE%\.local\bin` and adds it to your user PATH):
 
 ```powershell
-irm https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.ps1 | iex
+irm https://app.valarhq.ai/cli/install.ps1 | iex
 ```
 
 Pin a version on Windows with `$env:VALAR_VERSION = 'valar-cli-v1.2.3'` before the line above. Windows binaries ship only
 in releases that carry `valar-windows-*.exe` assets; on an older release the installer stops with "no checksum entry for valar-windows-<arch>.exe".
+
+The same installers are in this repo (`https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh`
+and `.../install.ps1`); both work the same wherever you fetch them from.
 
 Install system-wide (to `/usr/local/bin`, prompts for `sudo`):
 
@@ -49,7 +52,11 @@ sh install.sh
 1. Detects OS (`darwin`/`linux`) and arch (`arm64`/`amd64`).
 2. Resolves the version (latest, or `VALAR_VERSION`).
 3. Downloads the matching binary + `checksums.txt` (+ cosign signature/bundle) from
-   this repo's Releases.
+   `https://app.valarhq.ai/cli/latest`, which serves the latest release with no per-IP rate
+   limit, so a whole office behind one public IP can install at once. On any failure there
+   (unreachable, a missing file, or one that does not verify below) it uses this repo's Releases
+   instead, as it does for a pinned older version. `VALAR_DOWNLOAD_URL=github` skips
+   app.valarhq.ai.
 4. **Verifies the binary's SHA256 against `checksums.txt`** — mandatory, fails closed.
 5. If [`cosign`](https://github.com/sigstore/cosign) is installed, verifies the
    Sigstore signature on `checksums.txt` against the build workflow identity

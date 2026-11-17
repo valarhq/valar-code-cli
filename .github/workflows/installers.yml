@@ -1,0 +1,55 @@
+name: installers
+
+# install.sh (Linux, macOS) and install.ps1 (Windows PowerShell 5.1 and PowerShell 7) against a
+# local stand-in for https://app.valarhq.ai/cli/latest: served from there when it verifies, and the
+# GitHub release when it is unreachable, missing a file, or serves one that does not verify.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/prepare.sh _fix
+      - run: |
+          python3 tests/serve.py _fix 18978 &
+          sleep 1
+          bash tests/test-install.sh _fix 18978
+
+  windows:
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - shell: bash
+        run: bash tests/prepare.sh _fix
+      # Each step starts its own stand-in: a background process does not outlive its step on Windows.
+      - name: install.ps1 (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          Start-Process python -ArgumentList 'tests/serve.py', '_fix', '18978' -WindowStyle Hidden
+          Start-Sleep -Seconds 2
+          ./tests/test-install.ps1 -Fix _fix -Port 18978
+      - name: install.ps1 (PowerShell 7)
+        shell: pwsh
+        run: |
+          Start-Process python -ArgumentList 'tests/serve.py', '_fix', '18979' -WindowStyle Hidden
+          Start-Sleep -Seconds 2
+          ./tests/test-install.ps1 -Fix _fix -Port 18979
