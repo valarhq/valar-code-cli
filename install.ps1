@@ -314,11 +314,12 @@
     return $proc.ExitCode
   }
 
-  # The steps run the version just installed: an update offer before one of them would replace a
-  # pinned VALAR_VERSION with the latest release. Restored after, since `irm | iex` runs in the
-  # engineer's own session.
+  # A pinned VALAR_VERSION stays pinned: no update offer during the steps, nor in the apps valar
+  # restarts, which inherit its environment. Unpinned, the latest is installed and there is
+  # nothing to offer, so the variable is left alone. Restored after, since `irm | iex` runs in
+  # the engineer's own session.
   $priorNoUpdateCheck = $env:VALAR_NO_UPDATE_CHECK
-  $env:VALAR_NO_UPDATE_CHECK = '1'
+  if ($env:VALAR_VERSION) { $env:VALAR_NO_UPDATE_CHECK = '1' }
   try {
   # Login and the tool list run as plain statements, not inside a function or a capture, so valar
   # gets this console for its questions. Native stderr must not become a terminating error under

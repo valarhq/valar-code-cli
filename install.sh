@@ -350,9 +350,10 @@ if [ -z "$interactive" ]; then
 fi
 
 
-# The steps run the version just installed: an update offer before one of them would replace a
-# pinned VALAR_VERSION with the latest release.
-export VALAR_NO_UPDATE_CHECK=1
+# A pinned VALAR_VERSION stays pinned: no update offer during the steps, nor in the apps valar
+# restarts, which inherit its environment. Unpinned, the latest is installed and there is
+# nothing to offer, so the variable is left alone.
+[ -z "${VALAR_VERSION:-}" ] || export VALAR_NO_UPDATE_CHECK=1
 
 # VALAR_VERBOSE=1 reaches each step through the environment, which then prints every check;
 # the installer shows all of each step's output, with no rolling line. A release that predates
