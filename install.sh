@@ -2,10 +2,17 @@
 # install.sh — install the valar CLI from https://github.com/valarhq/valar-code-cli
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | sh
+#   curl -fsSL https://app.valarhq.ai/cli/install.sh | sh
+#   (or: curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | sh)
 #
 # Pin a version:
-#   VALAR_VERSION=valar-cli-v1.2.3 sh -c "$(curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh)"
+#   VALAR_VERSION=valar-cli-v1.2.3 sh -c "$(curl -fsSL https://app.valarhq.ai/cli/install.sh)"
+#
+# Where it downloads from: the latest release is served at https://app.valarhq.ai/cli/latest,
+# which has no per-IP rate limit, so a whole office behind one public IP can install at once.
+# Any failure there (unreachable, or a file that does not verify) falls back to the GitHub
+# release. A pinned older version comes from GitHub. VALAR_DOWNLOAD_URL=github skips
+# app.valarhq.ai; another URL serves the same files from there instead.
 #
 # Audit-first (recommended for production):
 #   curl -fsSL -o install.sh https://raw.githubusercontent.com/valarhq/valar-code-cli/<commit-sha>/install.sh
@@ -28,6 +35,8 @@ REPO="valarhq/valar-code-cli"
 VERSION="${VALAR_VERSION:-}"
 PREFIX="${VALAR_PREFIX:-$HOME/.local/bin}"
 TOKEN="${GITHUB_TOKEN:-}"
+HOSTED="${VALAR_DOWNLOAD_URL:-https://app.valarhq.ai/cli/latest}"
+HOSTED="${HOSTED%/}"
 
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
@@ -55,27 +64,10 @@ case "$arch" in
 esac
 TARGET="valar-$os-$arch"
 
-# ---- resolve version ----
-if [ -z "$VERSION" ]; then
-  api="https://api.github.com/repos/$REPO/releases/latest"
-  if [ -n "$TOKEN" ]; then
-    VERSION="$(curl -fsSL -H "Authorization: Bearer $TOKEN" "$api" \
-      | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
-  else
-    VERSION="$(curl -fsSL "$api" \
-      | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
-  fi
-fi
-if [ -z "$VERSION" ]; then
-  echo "install.sh: could not resolve a release version (set VALAR_VERSION or GITHUB_TOKEN)" >&2
-  exit 1
-fi
-
 # ---- temp workspace ----
 tmp="$(mktemp -d 2>/dev/null || mktemp -d -t valar)"
 trap 'rm -rf "$tmp"' EXIT INT TERM
 
-base="https://github.com/$REPO/releases/download/$VERSION"
 curl_auth() {
   if [ -n "$TOKEN" ]; then
     curl -fsSL -H "Authorization: Bearer $TOKEN" "$@"
@@ -83,22 +75,9 @@ curl_auth() {
     curl -fsSL "$@"
   fi
 }
+# app.valarhq.ai never gets the GitHub token.
+curl_hosted() { curl -fsSL "$@"; }
 
-echo "==> valar $VERSION for $TARGET"
-
-# ---- download checksums + binary ----
-curl_auth -o "$tmp/checksums.txt" "$base/checksums.txt"
-curl_auth -o "$tmp/$TARGET"       "$base/$TARGET"
-# Signature + bundle may not exist for older releases; download best-effort.
-curl_auth -o "$tmp/checksums.txt.sig"    "$base/checksums.txt.sig"    2>/dev/null || :
-curl_auth -o "$tmp/checksums.txt.bundle" "$base/checksums.txt.bundle" 2>/dev/null || :
-
-# ---- verify SHA256 (mandatory, fails closed) ----
-line="$(grep "  $TARGET\$" "$tmp/checksums.txt" || true)"
-if [ -z "$line" ]; then
-  echo "install.sh: no checksum entry for $TARGET in checksums.txt" >&2
-  exit 1
-fi
 # macOS <= 15 ships shasum, not sha256sum (Apple added /sbin/sha256sum in macOS 26).
 if command -v sha256sum >/dev/null 2>&1; then
   sha_c="sha256sum -c -"
@@ -108,27 +87,80 @@ else
   echo "install.sh: need sha256sum or shasum to verify the download" >&2
   exit 1
 fi
-# stderr stays visible: a swallowed "command not found" reads as a checksum mismatch.
-echo "$line" | (cd "$tmp" && $sha_c) >/dev/null \
-  || { echo "install.sh: SHA256 verification FAILED for $TARGET" >&2; exit 1; }
-echo "    sha256: OK"
 
-# ---- verify cosign signature (optional) ----
-if command -v cosign >/dev/null 2>&1 \
-   && [ -s "$tmp/checksums.txt.sig" ] && [ -s "$tmp/checksums.txt.bundle" ]; then
-  identity="https://github.com/valarhq/valar-monorepo/.github/workflows/release-valar-code.yml@refs/tags/$VERSION"
-  if cosign verify-blob \
-        --certificate-identity "$identity" \
-        --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-        --bundle "$tmp/checksums.txt.bundle" \
-        "$tmp/checksums.txt" >/dev/null 2>&1; then
-    echo "    cosign: OK (provenance verified)"
+# fetch <base> <version> <get>: downloads checksums + binary (+ signature) from <base> with <get>
+# (curl_hosted or curl_auth) into $tmp and verifies them. Returns non-zero, having said why, on any failure,
+# so the caller can try the next source; nothing is installed until one source verifies.
+fetch() {
+  _base="$1"; _ver="$2"; _get="$3"
+  rm -f "$tmp/checksums.txt" "$tmp/$TARGET" "$tmp/checksums.txt.sig" "$tmp/checksums.txt.bundle"
+  $_get -o "$tmp/checksums.txt" "$_base/checksums.txt" || { echo "    could not download checksums.txt" >&2; return 1; }
+  $_get -o "$tmp/$TARGET" "$_base/$TARGET" || { echo "    could not download $TARGET" >&2; return 1; }
+  # Signature + bundle may not exist for older releases; download best-effort.
+  $_get -o "$tmp/checksums.txt.sig"    "$_base/checksums.txt.sig"    2>/dev/null || :
+  $_get -o "$tmp/checksums.txt.bundle" "$_base/checksums.txt.bundle" 2>/dev/null || :
+
+  # ---- verify SHA256 (mandatory, fails closed) ----
+  _line="$(grep "  $TARGET\$" "$tmp/checksums.txt" || true)"
+  if [ -z "$_line" ]; then
+    echo "    no checksum entry for $TARGET in checksums.txt" >&2
+    return 1
+  fi
+  # stderr stays visible: a swallowed "command not found" reads as a checksum mismatch.
+  if ! echo "$_line" | (cd "$tmp" && $sha_c) >/dev/null; then
+    echo "    SHA256 verification FAILED for $TARGET" >&2
+    return 1
+  fi
+  echo "    sha256: OK"
+
+  # ---- verify cosign signature (optional) ----
+  if command -v cosign >/dev/null 2>&1 \
+     && [ -s "$tmp/checksums.txt.sig" ] && [ -s "$tmp/checksums.txt.bundle" ]; then
+    _identity="https://github.com/valarhq/valar-monorepo/.github/workflows/release-valar-code.yml@refs/tags/$_ver"
+    if cosign verify-blob \
+          --certificate-identity "$_identity" \
+          --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+          --bundle "$tmp/checksums.txt.bundle" \
+          "$tmp/checksums.txt" >/dev/null 2>&1; then
+      echo "    cosign: OK (provenance verified)"
+    else
+      echo "    cosign signature verification FAILED" >&2
+      return 1
+    fi
   else
-    echo "install.sh: cosign signature verification FAILED" >&2
+    echo "    cosign: skipped (install cosign to verify provenance; see SECURITY.md)"
+  fi
+}
+
+# ---- resolve version + download ----
+# app.valarhq.ai first: its release.json names the latest release. Used when no version is pinned,
+# or when the pinned one is the latest. Anything else, or any failure, is the GitHub release.
+fetched=""
+if [ "$HOSTED" != "github" ]; then
+  hosted_version="$(curl_hosted "$HOSTED/release.json" 2>/dev/null \
+    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)"
+  if [ -n "$hosted_version" ] && { [ -z "$VERSION" ] || [ "$VERSION" = "$hosted_version" ]; }; then
+    VERSION="$hosted_version"
+    echo "==> valar $VERSION for $TARGET"
+    if fetch "$HOSTED" "$VERSION" curl_hosted; then
+      fetched=1
+    else
+      echo "==> falling back to the GitHub release"
+    fi
+  fi
+fi
+if [ -z "$fetched" ]; then
+  if [ -z "$VERSION" ]; then
+    api="https://api.github.com/repos/$REPO/releases/latest"
+    VERSION="$(curl_auth "$api" | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)"
+  fi
+  if [ -z "$VERSION" ]; then
+    echo "install.sh: could not resolve a release version (set VALAR_VERSION or GITHUB_TOKEN)" >&2
     exit 1
   fi
-else
-  echo "    cosign: skipped (install cosign to verify provenance; see SECURITY.md)"
+  echo "==> valar $VERSION for $TARGET (from GitHub)"
+  fetch "https://github.com/$REPO/releases/download/$VERSION" "$VERSION" curl_auth \
+    || { echo "install.sh: could not download and verify valar $VERSION" >&2; exit 1; }
 fi
 
 # ---- install (always overwrites $PREFIX/valar with the resolved version) ----

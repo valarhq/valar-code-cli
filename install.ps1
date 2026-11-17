@@ -1,12 +1,20 @@
 # install.ps1 - installs the valar CLI on Windows (the counterpart of install.sh).
 #
-#   irm https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.ps1 | iex
+#   irm https://app.valarhq.ai/cli/install.ps1 | iex
+#   (or: irm https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.ps1 | iex)
 #
-# Knobs are env vars (a piped script takes no parameters), the same three as install.sh:
+# Knobs are env vars (a piped script takes no parameters), the same as install.sh:
 #
-#   VALAR_VERSION  release tag to install (default: the latest release)
-#   VALAR_PREFIX   install directory (default: %USERPROFILE%\.local\bin)
-#   GITHUB_TOKEN   optional; lifts the GitHub API rate limit
+#   VALAR_VERSION       release tag to install (default: the latest release)
+#   VALAR_PREFIX        install directory (default: %USERPROFILE%\.local\bin)
+#   GITHUB_TOKEN        optional; lifts the GitHub API rate limit
+#   VALAR_DOWNLOAD_URL  where the latest release is served (default: https://app.valarhq.ai/cli/latest);
+#                       'github' skips it
+#
+# The latest release is served at https://app.valarhq.ai/cli/latest, which has no per-IP rate
+# limit, so a whole office behind one public IP can install at once. Any failure there
+# (unreachable, or a file that does not verify) falls back to the GitHub release. A pinned older
+# version comes from GitHub.
 
 # The whole body runs in its own scope: `irm | iex` evaluates in the CALLER's session, and the
 # preference variables, the helper function and the token-bearing headers must not outlive
@@ -32,68 +40,100 @@
     default  { throw "install.ps1: unsupported architecture '$archRaw'" }
   }
 
-  # ---- resolve the release (one API call; none when pinned, as install.sh) ----
+  $hosted = if ($env:VALAR_DOWNLOAD_URL) { $env:VALAR_DOWNLOAD_URL.TrimEnd('/') } else { 'https://app.valarhq.ai/cli/latest' }
   $version = $env:VALAR_VERSION
-  if (-not $version) {
-    $headers = @{ 'User-Agent' = 'valar-install.ps1'; 'Accept' = 'application/vnd.github+json' }
-    if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
-    try {
-      $version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest" -Headers $headers).tag_name
-    } catch {
-      throw "install.ps1: could not resolve a release version ($($_.Exception.Message)); set VALAR_VERSION, or GITHUB_TOKEN to lift the API rate limit"
-    }
-  }
   $asset = "valar-windows-$arch.exe"
-  # Release downloads are unmetered, unlike the API (install.sh uses the same URLs).
-  $base  = "https://github.com/$repo/releases/download/$version"
-  Write-Host "==> valar $version for windows/$arch"
 
   $tmp = Join-Path ([IO.Path]::GetTempPath()) "valar-install-$PID"
   New-Item -ItemType Directory -Force $tmp | Out-Null
   try {
-    function Get-Asset([string]$name, [switch]$Optional) {
-      $out = Join-Path $tmp $name
-      try {
-        Invoke-WebRequest "$base/$name" -OutFile $out -UseBasicParsing
-      } catch {
-        if ($Optional) { return $null }
-        throw "install.ps1: release $version has no asset '$name' ($($_.Exception.Message))"
+    # Downloads checksums + binary from $base and verifies them; throws, saying why, on any failure.
+    # Returns the verified binary's path. Nothing is installed until one source verifies.
+    function Get-Verified([string]$base, [string]$ver) {
+      function Get-Asset([string]$name, [switch]$Optional) {
+        $out = Join-Path $tmp $name
+        Remove-Item $out -Force -ErrorAction SilentlyContinue
+        try {
+          Invoke-WebRequest "$base/$name" -OutFile $out -UseBasicParsing
+        } catch {
+          if ($Optional) { return $null }
+          throw "release $ver has no asset '$name' at $base ($($_.Exception.Message))"
+        }
+        return $out
       }
-      return $out
+
+      # checksums first: a missing entry is found before the binary is transferred.
+      $checksums = Get-Asset 'checksums.txt'
+      $want = $null
+      foreach ($line in Get-Content $checksums) {
+        if ($line -match "^([0-9a-fA-F]{64})\s+\*?(?:.*[\\/])?$([regex]::Escape($asset))$") { $want = $Matches[1].ToLower(); break }
+      }
+      if (-not $want) { throw "no checksum entry for $asset in checksums.txt" }
+
+      # ---- download + verify SHA256 (mandatory, fails closed) ----
+      $bin_tmp = Get-Asset $asset
+      $got = (Get-FileHash $bin_tmp -Algorithm SHA256).Hash.ToLower()
+      if ($got -ne $want) { throw "SHA256 verification FAILED for $asset (want $want, got $got)" }
+      Write-Host "    sha256: OK"
+
+      # ---- verify cosign signature (optional) ----
+      $bundle = $null
+      if (Get-Command cosign -ErrorAction SilentlyContinue) { $bundle = Get-Asset 'checksums.txt.bundle' -Optional }
+      if ($bundle) {
+        $identity = "https://github.com/valarhq/valar-monorepo/.github/workflows/release-valar-code.yml@refs/tags/$ver"
+        # cosign reports on stderr even on success; under $ErrorActionPreference=Stop a merged
+        # stderr line is a terminating error, so the call runs with Continue and is judged by
+        # its exit code alone.
+        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        $cosignOut = & cosign verify-blob --certificate-identity $identity `
+            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' `
+            --bundle $bundle $checksums 2>&1
+        $cosignRc = $LASTEXITCODE
+        $ErrorActionPreference = $prev
+        if ($cosignRc -ne 0) { throw "cosign signature verification FAILED`n$($cosignOut -join "`n")" }
+        Write-Host "    cosign: OK (provenance verified)"
+      } else {
+        Write-Host "    cosign: skipped (install cosign to verify provenance; see SECURITY.md)"
+      }
+      return $bin_tmp
     }
 
-    # checksums first: a missing entry is found before the binary is transferred.
-    $checksums = Get-Asset 'checksums.txt'
-    $want = $null
-    foreach ($line in Get-Content $checksums) {
-      if ($line -match "^([0-9a-fA-F]{64})\s+\*?(?:.*[\\/])?$([regex]::Escape($asset))$") { $want = $Matches[1].ToLower(); break }
+    # ---- resolve the release + download ----
+    # app.valarhq.ai first: its release.json names the latest release. Used when no version is
+    # pinned, or when the pinned one is the latest. Anything else, or any failure, is the GitHub
+    # release (one API call there when the version is still unknown; none when pinned, as install.sh).
+    $bin_tmp = $null
+    if ($hosted -ne 'github') {
+      $hostedVersion = $null
+      try { $hostedVersion = (Invoke-RestMethod "$hosted/release.json" -UseBasicParsing).tag_name } catch { }
+      if ($hostedVersion -and ((-not $version) -or $version -eq $hostedVersion)) {
+        $version = $hostedVersion
+        Write-Host "==> valar $version for windows/$arch"
+        try {
+          $bin_tmp = Get-Verified $hosted $version
+        } catch {
+          Write-Host "    $($_.Exception.Message)"
+          Write-Host "==> falling back to the GitHub release"
+        }
+      }
     }
-    if (-not $want) { throw "install.ps1: no checksum entry for $asset in checksums.txt" }
-
-    # ---- download + verify SHA256 (mandatory, fails closed) ----
-    $bin_tmp = Get-Asset $asset
-    $got = (Get-FileHash $bin_tmp -Algorithm SHA256).Hash.ToLower()
-    if ($got -ne $want) { throw "install.ps1: SHA256 verification FAILED for $asset (want $want, got $got)" }
-    Write-Host "    sha256: OK"
-
-    # ---- verify cosign signature (optional) ----
-    $bundle = $null
-    if (Get-Command cosign -ErrorAction SilentlyContinue) { $bundle = Get-Asset 'checksums.txt.bundle' -Optional }
-    if ($bundle) {
-      $identity = "https://github.com/valarhq/valar-monorepo/.github/workflows/release-valar-code.yml@refs/tags/$version"
-      # cosign reports on stderr even on success; under $ErrorActionPreference=Stop a merged
-      # stderr line is a terminating error, so the call runs with Continue and is judged by
-      # its exit code alone.
-      $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-      $cosignOut = & cosign verify-blob --certificate-identity $identity `
-          --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' `
-          --bundle $bundle $checksums 2>&1
-      $cosignRc = $LASTEXITCODE
-      $ErrorActionPreference = $prev
-      if ($cosignRc -ne 0) { throw "install.ps1: cosign signature verification FAILED`n$($cosignOut -join "`n")" }
-      Write-Host "    cosign: OK (provenance verified)"
-    } else {
-      Write-Host "    cosign: skipped (install cosign to verify provenance; see SECURITY.md)"
+    if (-not $bin_tmp) {
+      if (-not $version) {
+        $headers = @{ 'User-Agent' = 'valar-install.ps1'; 'Accept' = 'application/vnd.github+json' }
+        if ($env:GITHUB_TOKEN) { $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN" }
+        try {
+          $version = (Invoke-RestMethod "https://api.github.com/repos/$repo/releases/latest" -Headers $headers).tag_name
+        } catch {
+          throw "install.ps1: could not resolve a release version ($($_.Exception.Message)); set VALAR_VERSION, or GITHUB_TOKEN to lift the API rate limit"
+        }
+      }
+      Write-Host "==> valar $version for windows/$arch (from GitHub)"
+      # Release downloads are unmetered, unlike the API (install.sh uses the same URLs).
+      try {
+        $bin_tmp = Get-Verified "https://github.com/$repo/releases/download/$version" $version
+      } catch {
+        throw "install.ps1: $($_.Exception.Message)"
+      }
     }
 
     # ---- install (always overwrites $prefix\valar.exe with the resolved version) ----
