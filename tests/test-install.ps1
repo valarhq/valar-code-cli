@@ -26,7 +26,7 @@ function Run-Case([string]$name, [string]$want, [string]$src, [hashtable]$envs) 
   $ok = ($got -eq $want)
   if ($src -eq 'hosted' -and $out -match '\(from GitHub\)') { $ok = $false }
   if ($src -eq 'github' -and $out -notmatch '\(from GitHub\)') { $ok = $false }
-  if ($ok) { Write-Host "ok    $name ($got from $src)" } else { Write-Host "FAIL  $name: got '$got', want '$want' from $src`n$out"; $script:fail = $true }
+  if ($ok) { Write-Host "ok    $name ($got from $src)" } else { Write-Host "FAIL  ${name}: got '$got', want '$want' from $src`n$out"; $script:fail = $true }
   foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
   Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 }
