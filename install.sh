@@ -18,8 +18,12 @@
 #   curl -fsSL -o install.sh https://raw.githubusercontent.com/valarhq/valar-code-cli/<commit-sha>/install.sh
 #   less install.sh && sh install.sh
 #
-# Install system-wide:
-#   sh install.sh --prefix /usr/local
+# Install system-wide: run it as root, and it installs to /usr/local/bin. VALAR_PREFIX or
+# --prefix <dir> installs to another directory, as root or not.
+#
+# Set up: at a terminal it then runs `valar setup` (`valar setup --no-upgrade` when VALAR_VERSION
+# pins a release). VALAR_NO_SETUP=1 installs only, for a script that runs `valar setup --force`
+# itself, such as an MDM script.
 #
 # Private-repo validation (until valar-code-cli is public):
 #   GITHUB_TOKEN=<pat-with-read> sh install.sh
@@ -33,7 +37,12 @@ set -eu
 
 REPO="valarhq/valar-code-cli"
 VERSION="${VALAR_VERSION:-}"
-PREFIX="${VALAR_PREFIX:-$HOME/.local/bin}"
+# Root installs for every account, and may have no HOME (an MDM script, a LaunchDaemon).
+if [ "$(id -u)" = 0 ]; then
+  PREFIX="${VALAR_PREFIX:-/usr/local/bin}"
+else
+  PREFIX="${VALAR_PREFIX:-$HOME/.local/bin}"
+fi
 TOKEN="${GITHUB_TOKEN:-}"
 HOSTED="${VALAR_DOWNLOAD_URL:-https://app.valarhq.ai/cli/latest}"
 HOSTED="${HOSTED%/}"
@@ -187,28 +196,33 @@ fi
 # ---- PATH ----
 # Pick the rc file AND the line syntax for the user's login shell. fish uses a
 # different config location and its own PATH syntax (fish_add_path); the POSIX
-# `export PATH=...` line is silently ignored by fish.
-case "$SHELL" in
-  */fish)
-    rc="$HOME/.config/fish/config.fish"
-    line="fish_add_path $PREFIX" ;;
-  */zsh)
-    rc="$HOME/.zshrc"
-    line="export PATH=\"$PREFIX:\$PATH\"" ;;
-  */bash)
-    if [ "$os" = "darwin" ]; then rc="$HOME/.bash_profile"; else rc="$HOME/.bashrc"; fi
-    line="export PATH=\"$PREFIX:\$PATH\"" ;;
-  *)
-    rc="$HOME/.profile"
-    line="export PATH=\"$PREFIX:\$PATH\"" ;;
-esac
-mkdir -p "$(dirname "$rc")"
-if [ -f "$rc" ] && grep -qxF "$line" "$rc"; then
-  echo "    path: $PREFIX already on PATH via $rc"
+# `export PATH=...` line is silently ignored by fish. Root's own rc file reaches no one else's
+# shell, so as root nothing is written there.
+if [ "$(id -u)" = 0 ]; then
+  echo "    path: unchanged (run as root)"
 else
-  printf '\n# Added by valar install.sh\n%s\n' "$line" >> "$rc"
-  echo "    path: added $PREFIX to PATH via $rc"
-  echo "    run:  source $rc  (or open a new shell)"
+  case "$SHELL" in
+    */fish)
+      rc="$HOME/.config/fish/config.fish"
+      line="fish_add_path $PREFIX" ;;
+    */zsh)
+      rc="$HOME/.zshrc"
+      line="export PATH=\"$PREFIX:\$PATH\"" ;;
+    */bash)
+      if [ "$os" = "darwin" ]; then rc="$HOME/.bash_profile"; else rc="$HOME/.bashrc"; fi
+      line="export PATH=\"$PREFIX:\$PATH\"" ;;
+    *)
+      rc="$HOME/.profile"
+      line="export PATH=\"$PREFIX:\$PATH\"" ;;
+  esac
+  mkdir -p "$(dirname "$rc")"
+  if [ -f "$rc" ] && grep -qxF "$line" "$rc"; then
+    echo "    path: $PREFIX already on PATH via $rc"
+  else
+    printf '\n# Added by valar install.sh\n%s\n' "$line" >> "$rc"
+    echo "    path: added $PREFIX to PATH via $rc"
+    echo "    run:  source $rc  (or open a new shell)"
+  fi
 fi
 
 # ---- finish ----
@@ -227,4 +241,24 @@ if [ -n "$found" ] && [ "$found" != "$bin" ]; then
   echo "               $found"
   echo "             remove it, or ensure $PREFIX comes first on PATH."
 fi
-echo "    next: valar help"
+
+# ---- set up ----
+# A release without `valar setup` is set up by hand. The check sits in an `if`, where set -e lets
+# it fail.
+if ! "$bin" setup --help >/dev/null 2>&1; then
+  echo "    next: valar login, then valar <tool> on (for example: valar claude on)"
+  exit 0
+fi
+if [ "${VALAR_NO_SETUP:-}" = 1 ] || [ ! -t 1 ]; then
+  echo "    next: valar setup"
+  exit 0
+fi
+# A pinned release stays the one installed.
+no_upgrade=""
+if [ -n "${VALAR_VERSION:-}" ]; then no_upgrade="--no-upgrade"; fi
+echo
+# The terminal is setup's input: piped from curl, this script's own input is the script itself.
+code=0
+# shellcheck disable=SC2086 # $no_upgrade is one flag or none.
+"$bin" setup $no_upgrade </dev/tty || code=$?
+exit "$code"
