@@ -21,6 +21,9 @@
 # Install system-wide:
 #   sh install.sh --prefix /usr/local
 #
+# Set up: at a terminal it then runs `valar setup --no-upgrade`, keeping the release it just
+# installed. VALAR_NO_SETUP=1 installs only.
+#
 # Private-repo validation (until valar-code-cli is public):
 #   GITHUB_TOKEN=<pat-with-read> sh install.sh
 #
@@ -227,4 +230,20 @@ if [ -n "$found" ] && [ "$found" != "$bin" ]; then
   echo "               $found"
   echo "             remove it, or ensure $PREFIX comes first on PATH."
 fi
-echo "    next: valar help"
+# ---- set up ----
+# A release without `valar setup` ends here, as before. The check sits in an `if`, where set -e lets
+# it fail.
+if ! "$bin" setup --help >/dev/null 2>&1; then
+  echo "    next: valar help"
+  exit 0
+fi
+if [ "${VALAR_NO_SETUP:-}" = 1 ] || [ ! -t 1 ]; then
+  echo "    next: valar setup"
+  exit 0
+fi
+echo
+# The release just installed is the one to keep, so setup does not look for a newer one. The
+# terminal is setup's input: piped from curl, this script's own input is the script itself.
+code=0
+"$bin" setup --no-upgrade </dev/tty || code=$?
+exit "$code"

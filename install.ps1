@@ -10,6 +10,10 @@
 #   GITHUB_TOKEN        optional; lifts the GitHub API rate limit
 #   VALAR_DOWNLOAD_URL  where the latest release is served (default: https://app.valarhq.ai/cli/latest);
 #                       'github' skips it
+#   VALAR_NO_SETUP      1 installs only
+#
+# In a console it then runs `valar setup --no-upgrade`, keeping the release it just installed,
+# leaving its exit code in $LASTEXITCODE and stopping with an error when it is not 0.
 #
 # The latest release is served at https://app.valarhq.ai/cli/latest, which has no per-IP rate
 # limit, so a whole office behind one public IP can install at once. Any failure there
@@ -201,5 +205,32 @@
   $onPath = Get-Command valar -ErrorAction SilentlyContinue
   if ($onPath -and $onPath.Source -and ($onPath.Source -ne $bin)) {
     Write-Warning "install.ps1: 'valar' on your PATH resolves to $($onPath.Source), not $bin - the earlier entry shadows this install; remove it or put $prefix first"
+  }
+
+  # ---- set up ----
+  # A release without `valar setup` ends here, as before. The check is judged by its exit code alone:
+  # under Stop, Windows PowerShell 5.1 turns a redirected stderr line into a terminating error.
+  $hasSetup = $false
+  if ($new_version) {
+    $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    & $bin setup --help *> $null
+    $hasSetup = ($LASTEXITCODE -eq 0)
+    $ErrorActionPreference = $prevEap
+  }
+  $console = -not [Console]::IsInputRedirected -and -not [Console]::IsOutputRedirected
+  if ($hasSetup -and ($env:VALAR_NO_SETUP -eq '1' -or -not $console)) {
+    Write-Host "    next: valar setup"
+  } elseif ($hasSetup) {
+    # The release just installed is the one to keep, so setup does not look for a newer one.
+    $setupArgs = @('setup', '--no-upgrade')
+    Write-Host ""
+    # Started on this console itself, so setup's input and output are the console whatever this
+    # script's own output is attached to.
+    $p = Start-Process -FilePath $bin -ArgumentList $setupArgs -NoNewWindow -PassThru
+    $null = $p.Handle # keeps ExitCode readable once the process has ended
+    $p.WaitForExit()
+    $global:LASTEXITCODE = $p.ExitCode
+    # A throw, never exit: under irm | iex, exit would close the window.
+    if ($p.ExitCode -ne 0) { throw "install.ps1: valar setup exited $($p.ExitCode)" }
   }
 }
