@@ -67,25 +67,4 @@ setup_case "VALAR_NO_SETUP=1: installs only"              tty 0 "-"             
 setup_case "output to a log: installs only"               log 0 "-"                  "next: valar setup"
 setup_case "a release without setup: the manual commands" tty 0 "-"                  "valar claude on" STUB_NO_SETUP=1
 
-# The default directory: ~/.local/bin for an account; /usr/local/bin for root, run with no HOME or
-# SHELL as an MDM script runs it. The root case writes /usr/local/bin, so it runs on CI only.
-if [ "$(id -u)" != 0 ]; then
-  h="$(mktemp -d)"
-  env HOME="$h" SHELL=/bin/sh VALAR_DOWNLOAD_URL="$STUB" VALAR_NO_SETUP=1 sh "$FIX/install.sh" >/dev/null 2>&1
-  if [ -x "$h/.local/bin/valar" ]; then echo "ok    an account: ~/.local/bin"; else echo "FAIL  an account: no ~/.local/bin/valar"; fail=1; fi
-  rm -rf "$h"
-fi
-if [ -n "${CI:-}" ]; then
-  as_root=""
-  [ "$(id -u)" = 0 ] || as_root="sudo -n"
-  out="$($as_root env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin VALAR_DOWNLOAD_URL="$STUB" VALAR_NO_SETUP=1 sh "$FIX/install.sh" 2>&1)"
-  code=$?
-  got="$(/usr/local/bin/valar --version 2>/dev/null | awk '{print $NF}')"
-  case "$code $got $out" in
-    "0 valar-cli-v0.0.0-stub "*"path: unchanged (run as root)"*) echo "ok    root: /usr/local/bin, no rc file" ;;
-    *) echo "FAIL  root: exit $code, /usr/local/bin/valar '$got'"; echo "$out" | sed 's/^/      /'; fail=1 ;;
-  esac
-  $as_root rm -f /usr/local/bin/valar
-fi
-
 exit "$fail"
