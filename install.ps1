@@ -6,7 +6,8 @@
 # Knobs are env vars (a piped script takes no parameters), the same as install.sh:
 #
 #   VALAR_VERSION       release tag to install (default: the latest release)
-#   VALAR_PREFIX        install directory (default: %USERPROFILE%\.local\bin)
+#   VALAR_PREFIX        install directory (default: %USERPROFILE%\.local\bin; as SYSTEM,
+#                       C:\Program Files\Valar on the machine PATH)
 #   GITHUB_TOKEN        optional; lifts the GitHub API rate limit
 #   VALAR_DOWNLOAD_URL  where the latest release is served (default: https://app.valarhq.ai/cli/latest);
 #                       'github' skips it
@@ -32,7 +33,11 @@
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
   $repo   = 'valarhq/valar-code-cli'
-  $prefix = if ($env:VALAR_PREFIX) { $env:VALAR_PREFIX } else { Join-Path $env:USERPROFILE '.local\bin' }
+  # As SYSTEM (an MDM's deployment tool) the default is machine-wide: Program Files, on the machine
+  # PATH, writable by administrators only, where `valar setup` run as SYSTEM accepts it. SYSTEM's own
+  # profile is no user's to run valar from.
+  $system = [Security.Principal.WindowsIdentity]::GetCurrent().IsSystem
+  $prefix = if ($env:VALAR_PREFIX) { $env:VALAR_PREFIX } elseif ($system) { Join-Path $env:ProgramFiles 'Valar' } else { Join-Path $env:USERPROFILE '.local\bin' }
   $prefix = $prefix.TrimEnd('\')
   # From the environment, not [RuntimeInformation]::OSArchitecture: that .NET call can bind to
   # a facade and return null in Windows PowerShell 5.1. PROCESSOR_ARCHITEW6432 is set when an
@@ -163,15 +168,23 @@
     Remove-Item $old -Force -ErrorAction SilentlyContinue
     # Integrity was verified above; drop the mark-of-the-web so the first run isn't blocked.
     Unblock-File $bin -ErrorAction SilentlyContinue
+    # A move keeps the temp folder's access list, which can deny users running it: take the
+    # install folder's instead.
+    if ($system) { & icacls $bin /reset /Q | Out-Null }
   } finally {
     Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
   }
 
-  # ---- PATH (user scope; no elevation) ----
+  # ---- PATH (user scope; the machine's as SYSTEM) ----
   # Straight to the registry rather than [Environment]::SetEnvironmentVariable: that API
   # expands %VAR% entries and writes the value back as REG_SZ, silently flattening the
   # default REG_EXPAND_SZ user Path. Read unexpanded, append, write back with the same kind.
-  $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+  $scope = if ($system) { 'Machine' } else { 'User' }
+  $key = if ($system) {
+    [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey('SYSTEM\CurrentControlSet\Control\Session Manager\Environment', $true)
+  } else {
+    [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)
+  }
   try {
     $userPath = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     $kind = if ($userPath) { $key.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }
@@ -180,9 +193,9 @@
       $key.SetValue('Path', (($userPath.TrimEnd(';') + ";$prefix").TrimStart(';')), $kind)
       # Registry writes do not notify running shells; a user-scope set/delete through .NET does
       # (WM_SETTINGCHANGE), so touch a scratch variable to broadcast.
-      [Environment]::SetEnvironmentVariable('VALAR_INSTALL_PATH_UPDATED', '1', 'User')
-      [Environment]::SetEnvironmentVariable('VALAR_INSTALL_PATH_UPDATED', $null, 'User')
-      Write-Host "    added $prefix to your user PATH (new terminals pick it up)"
+      [Environment]::SetEnvironmentVariable('VALAR_INSTALL_PATH_UPDATED', '1', $scope)
+      [Environment]::SetEnvironmentVariable('VALAR_INSTALL_PATH_UPDATED', $null, $scope)
+      Write-Host "    added $prefix to the $($scope.ToLower()) PATH (new terminals pick it up)"
     }
   } finally {
     $key.Close()

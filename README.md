@@ -22,10 +22,13 @@ irm https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.ps1 | 
 
 At a terminal, the installer then runs `valar setup`, which signs you in and turns on your tools. Set `VALAR_NO_SETUP=1` to install only.
 
-Install system-wide (to `/usr/local/bin`, prompts for `sudo`):
+Install system-wide, as from an MDM policy: run as root, the installer puts `valar` in `/usr/local/bin`
+and changes no shell profile. On Windows, run as SYSTEM, it puts `valar.exe` in
+`C:\Program Files\Valar` and adds that folder to the machine PATH. Then run `valar setup` as root or
+SYSTEM with `VALAR_USER` naming the person to set up (on a Mac, the person at the screen when none is named).
 
 ```sh
-sh install.sh --prefix /usr/local
+curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | sudo sh
 ```
 
 Audit-first (recommended for production — pin the script to an immutable commit
@@ -47,11 +50,11 @@ sh install.sh
 5. If [`cosign`](https://github.com/sigstore/cosign) is installed, verifies the
    Sigstore signature on `checksums.txt` against the build workflow identity
    (provenance; see [SECURITY.md](SECURITY.md)). Skipped if `cosign` is absent.
-6. Installs to `~/.local/bin/valar` (override with `--prefix`), **always overwriting**
+6. Installs to `~/.local/bin/valar` (`/usr/local/bin/valar` as root; override with `--prefix`), **always overwriting**
    any existing copy in that prefix; re-run any time to upgrade. It warns if a
    different `valar` earlier on your `PATH` would shadow the new one.
 7. Adds the install dir to `PATH` via your shell rc (`~/.zshrc` / `~/.bashrc` /
-   `~/.bash_profile` / `~/.config/fish/config.fish` for fish), idempotently.
+   `~/.bash_profile` / `~/.config/fish/config.fish` for fish), idempotently. As root it changes no rc.
 
 Dependencies: `curl`, `sha256sum`, `uname`. `cosign` is optional.
 
