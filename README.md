@@ -14,20 +14,13 @@ here by a release workflow, signed with Sigstore/cosign.
 curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh | sh
 ```
 
-Pin a version:
-
-```sh
-VALAR_VERSION=valar-cli-v1.2.3 sh -c "$(curl -fsSL https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.sh)"
-```
-
 Windows (PowerShell; installs `valar.exe` to `%USERPROFILE%\.local\bin` and adds it to your user PATH):
 
 ```powershell
 irm https://raw.githubusercontent.com/valarhq/valar-code-cli/main/install.ps1 | iex
 ```
 
-Pin a version on Windows with `$env:VALAR_VERSION = 'valar-cli-v1.2.3'` before the line above. Windows binaries ship only
-in releases that carry `valar-windows-*.exe` assets; on an older release the installer stops with "no checksum entry for valar-windows-<arch>.exe".
+At a terminal, the installer then runs `valar setup`, which signs you in and turns on your tools. Set `VALAR_NO_SETUP=1` to install only.
 
 Install system-wide (to `/usr/local/bin`, prompts for `sudo`):
 
@@ -47,7 +40,7 @@ sh install.sh
 ## What it does
 
 1. Detects OS (`darwin`/`linux`) and arch (`arm64`/`amd64`).
-2. Resolves the version (latest, or `VALAR_VERSION`).
+2. Resolves the latest version.
 3. Downloads the matching binary + `checksums.txt` (+ cosign signature/bundle) from
    this repo's Releases.
 4. **Verifies the binary's SHA256 against `checksums.txt`** — mandatory, fails closed.
