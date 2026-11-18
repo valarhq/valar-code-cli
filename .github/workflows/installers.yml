@@ -25,6 +25,10 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
       - run: bash tests/prepare.sh _fix
       - run: |
           python3 tests/serve.py _fix 18978 &
@@ -38,6 +42,10 @@ jobs:
       GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
       - shell: bash
         run: bash tests/prepare.sh _fix
       # Each step starts its own stand-in: a background process does not outlive its step on Windows.

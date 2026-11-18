@@ -42,10 +42,10 @@ setup_case() { # setup_case <name> <tty|log> <want exit> <want setup args, or - 
   local h out code got ok=1
   h="$(mktemp -d)"; mkdir "$h/tmp"
   if [ "$mode" = tty ]; then
-    out="$(env HOME="$h" SHELL=/bin/sh TMPDIR="$h/tmp" VALAR_PREFIX="$h/bin" VALAR_DOWNLOAD_URL="$STUB" "$@" \
+    out="$(env HOME="$h" SHELL=/bin/sh TMPDIR="$h/tmp" VALAR_PREFIX="$h/bin" VALAR_DOWNLOAD_URL="$STUB" STUB_LOG="$h/setup.log" "$@" \
       python3 -c "$TERMINAL" sh -c 'cat "$1" | sh' sh "$FIX/install.sh" 2>&1)"
   else
-    out="$(env HOME="$h" SHELL=/bin/sh TMPDIR="$h/tmp" VALAR_PREFIX="$h/bin" VALAR_DOWNLOAD_URL="$STUB" "$@" \
+    out="$(env HOME="$h" SHELL=/bin/sh TMPDIR="$h/tmp" VALAR_PREFIX="$h/bin" VALAR_DOWNLOAD_URL="$STUB" STUB_LOG="$h/setup.log" "$@" \
       sh "$FIX/install.sh" 2>&1 </dev/null)"
   fi
   code=$?

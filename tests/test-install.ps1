@@ -8,10 +8,11 @@ $tag = (Get-Content (Join-Path $Fix 'TAG')).Trim()
 $url = "http://127.0.0.1:$Port"
 $script:fail = $false
 
-function Run-Case([string]$name, [string]$want, [string]$src, [hashtable]$envs) {
+# Run-Case <name> <want version> <want source: hosted|github> <env> [<want in output>]
+function Run-Case([string]$name, [string]$want, [string]$src, [hashtable]$envs, [string]$wantOut = '') {
   $dir = Join-Path ([IO.Path]::GetTempPath()) ("valar-t-" + [guid]::NewGuid().ToString('N'))
   $saved = @{}
-  foreach ($k in @('VALAR_DOWNLOAD_URL', 'VALAR_VERSION', 'VALAR_PREFIX')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $null) }
+  foreach ($k in @('VALAR_DOWNLOAD_URL', 'VALAR_VERSION', 'VALAR_PREFIX', 'VALAR_NO_SETUP', 'STUB_NO_SETUP')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $null) }
   $env:VALAR_PREFIX = Join-Path $dir 'bin'
   foreach ($k in $envs.Keys) { [Environment]::SetEnvironmentVariable($k, $envs[$k]) }
   $out = ''
@@ -26,7 +27,8 @@ function Run-Case([string]$name, [string]$want, [string]$src, [hashtable]$envs) 
   $ok = ($got -eq $want)
   if ($src -eq 'hosted' -and $out -match '\(from GitHub\)') { $ok = $false }
   if ($src -eq 'github' -and $out -notmatch '\(from GitHub\)') { $ok = $false }
-  if ($ok) { Write-Host "ok    $name ($got from $src)" } else { Write-Host "FAIL  ${name}: got '$got', want '$want' from $src`n$out"; $script:fail = $true }
+  if ($wantOut -and -not $out.Contains($wantOut)) { $ok = $false }
+  if ($ok) { Write-Host "ok    $name ($got from $src)" } else { Write-Host "FAIL  ${name}: got '$got', want '$want' from $src, '$wantOut' in output`n$out"; $script:fail = $true }
   foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
   Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -40,4 +42,11 @@ Run-Case 'host unreachable: GitHub'             $tag github @{ VALAR_DOWNLOAD_UR
 Run-Case 'VALAR_DOWNLOAD_URL=github'            $tag github @{ VALAR_DOWNLOAD_URL = 'github' }
 $older = (gh release list --repo valarhq/valar-code-cli --limit 2 --json tagName --jq '.[1].tagName')
 Run-Case 'pinned to an older release: GitHub'   $older github @{ VALAR_DOWNLOAD_URL = "$url/good/latest"; VALAR_VERSION = $older }
+
+# The hand-over to `valar setup`, against the stub. CI runs PowerShell without a console, so these
+# are the cases that install only.
+$stub = 'valar-cli-v0.0.0-stub'
+Run-Case 'no console: installs only'                  $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest" } 'next: valar setup'
+Run-Case 'VALAR_NO_SETUP=1: installs only'            $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest"; VALAR_NO_SETUP = '1' } 'next: valar setup'
+Run-Case 'a release without setup: the manual commands' $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest"; STUB_NO_SETUP = '1' } 'valar claude on'
 if ($script:fail) { exit 1 }
