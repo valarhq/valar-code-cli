@@ -65,6 +65,6 @@ setup_case "pinned at a terminal: --no-upgrade"           tty 0 "setup --no-upgr
 setup_case "valar setup fails: the installer exits 1"     tty 1 "setup --no-upgrade" "installed"  STUB_SETUP_EXIT=1
 setup_case "VALAR_NO_SETUP=1: installs only"              tty 0 "-"                  "next: valar setup" VALAR_NO_SETUP=1
 setup_case "output to a log: installs only"               log 0 "-"                  "next: valar setup"
-setup_case "a release without setup: the manual commands" tty 0 "-"                  "valar claude on" STUB_NO_SETUP=1
+setup_case "a release without setup: as before"          tty 0 "-"                  "next: valar help" STUB_NO_SETUP=1
 
 exit "$fail"

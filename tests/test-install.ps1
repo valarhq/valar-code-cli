@@ -8,7 +8,7 @@ $tag = (Get-Content (Join-Path $Fix 'TAG')).Trim()
 $url = "http://127.0.0.1:$Port"
 $script:fail = $false
 
-# Run-Case <name> <want version> <want source: hosted|github> <env> [<want in output>]
+# Run-Case <name> <want version> <want source: hosted|github> <env> [<want in output, or !<not in output>>]
 function Run-Case([string]$name, [string]$want, [string]$src, [hashtable]$envs, [string]$wantOut = '') {
   $dir = Join-Path ([IO.Path]::GetTempPath()) ("valar-t-" + [guid]::NewGuid().ToString('N'))
   $saved = @{}
@@ -27,7 +27,9 @@ function Run-Case([string]$name, [string]$want, [string]$src, [hashtable]$envs, 
   $ok = ($got -eq $want)
   if ($src -eq 'hosted' -and $out -match '\(from GitHub\)') { $ok = $false }
   if ($src -eq 'github' -and $out -notmatch '\(from GitHub\)') { $ok = $false }
-  if ($wantOut -and -not $out.Contains($wantOut)) { $ok = $false }
+  if ($wantOut.StartsWith('!')) {
+    if ($out.Contains($wantOut.Substring(1))) { $ok = $false }
+  } elseif ($wantOut -and -not $out.Contains($wantOut)) { $ok = $false }
   if ($ok) { Write-Host "ok    $name ($got from $src)" } else { Write-Host "FAIL  ${name}: got '$got', want '$want' from $src, '$wantOut' in output`n$out"; $script:fail = $true }
   foreach ($k in $saved.Keys) { [Environment]::SetEnvironmentVariable($k, $saved[$k]) }
   Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
@@ -48,5 +50,5 @@ Run-Case 'pinned to an older release: GitHub'   $older github @{ VALAR_DOWNLOAD_
 $stub = 'valar-cli-v0.0.0-stub'
 Run-Case 'no console: installs only'                  $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest" } 'next: valar setup'
 Run-Case 'VALAR_NO_SETUP=1: installs only'            $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest"; VALAR_NO_SETUP = '1' } 'next: valar setup'
-Run-Case 'a release without setup: the manual commands' $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest"; STUB_NO_SETUP = '1' } 'valar claude on'
+Run-Case 'a release without setup: as before'         $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest"; STUB_NO_SETUP = '1' } '!next:'
 if ($script:fail) { exit 1 }
