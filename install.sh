@@ -21,8 +21,8 @@
 # Install system-wide:
 #   sh install.sh --prefix /usr/local
 #
-# Set up: at a terminal it then runs `valar setup` (`valar setup --no-upgrade` when VALAR_VERSION
-# pins a release). VALAR_NO_SETUP=1 installs only, for a script that runs `valar setup --force`
+# Set up: at a terminal it then runs `valar setup --no-upgrade`, keeping the release it just
+# installed. VALAR_NO_SETUP=1 installs only, for a script that runs `valar setup --force`
 # itself, such as an MDM script.
 #
 # Private-repo validation (until valar-code-cli is public):
@@ -242,12 +242,9 @@ if [ "${VALAR_NO_SETUP:-}" = 1 ] || [ ! -t 1 ]; then
   echo "    next: valar setup"
   exit 0
 fi
-# A pinned release stays the one installed.
-no_upgrade=""
-if [ -n "${VALAR_VERSION:-}" ]; then no_upgrade="--no-upgrade"; fi
 echo
-# The terminal is setup's input: piped from curl, this script's own input is the script itself.
+# The release just installed is the one to keep, so setup does not look for a newer one. The
+# terminal is setup's input: piped from curl, this script's own input is the script itself.
 code=0
-# shellcheck disable=SC2086 # $no_upgrade is one flag or none.
-"$bin" setup $no_upgrade </dev/tty || code=$?
+"$bin" setup --no-upgrade </dev/tty || code=$?
 exit "$code"

@@ -13,8 +13,8 @@
 #   VALAR_NO_SETUP      1 installs only, for a script that runs `valar setup --force` itself, such
 #                       as an MDM script
 #
-# In a console it then runs `valar setup` (`valar setup --no-upgrade` when VALAR_VERSION pins a
-# release), leaving its exit code in $LASTEXITCODE and stopping with an error when it is not 0.
+# In a console it then runs `valar setup --no-upgrade`, keeping the release it just installed,
+# leaving its exit code in $LASTEXITCODE and stopping with an error when it is not 0.
 #
 # The latest release is served at https://app.valarhq.ai/cli/latest, which has no per-IP rate
 # limit, so a whole office behind one public IP can install at once. Any failure there
@@ -224,9 +224,8 @@
   } elseif ($env:VALAR_NO_SETUP -eq '1' -or -not $console) {
     Write-Host "    next: valar setup"
   } else {
-    # A pinned release stays the one installed.
-    $setupArgs = @('setup')
-    if ($env:VALAR_VERSION) { $setupArgs += '--no-upgrade' }
+    # The release just installed is the one to keep, so setup does not look for a newer one.
+    $setupArgs = @('setup', '--no-upgrade')
     Write-Host ""
     # Started on this console itself, so setup's input and output are the console whatever this
     # script's own output is attached to.
