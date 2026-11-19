@@ -46,15 +46,25 @@ if [ -n "${CI:-}" ] && sudo -n true 2>/dev/null; then
   else
     echo "FAIL  as root: got '$got' in '$bin' (folder owner $owner), home holds '$(sudo ls -A "$h")'"; echo "$out" | sed 's/^/      /'; fail=1
   fi
+  # Where it fell back to /usr/local/valar/bin, /usr/local/bin/valar is a link that runs the same copy.
+  if echo "$out" | grep -q "^ *link: /usr/local/bin/valar"; then
+    if [ "$(/usr/local/bin/valar --version 2>/dev/null | awk '{print $NF}')" = "$TAG" ]; then
+      echo "ok    as root: /usr/local/bin/valar runs the copy in $bin"
+    else
+      echo "FAIL  as root: /usr/local/bin/valar does not run $bin"; fail=1
+    fi
+    sudo rm -f /usr/local/bin/valar
+  fi
   sudo rm -rf "$h" "$bin"
-  # A folder another account can write is refused: root would run what that account put there.
+  # A folder another account can write is installed into as asked, as before (a script may name
+  # it), with a warning naming the folder valar setup needs.
   open="$(mktemp -d)/bin"
-  if sudo env VALAR_PREFIX="$open" VALAR_DOWNLOAD_URL="$URL/good/latest" sh "$FIX/install.sh" >/dev/null 2>"$h.err" </dev/null; then
-    echo "FAIL  as root into $open: installed into a folder another account can change"; fail=1
-  elif grep -q "can be changed by an account other than root" "$h.err"; then
-    echo "ok    as root into a folder another account can change: refused"
+  if ! sudo env VALAR_PREFIX="$open" VALAR_DOWNLOAD_URL="$URL/good/latest" sh "$FIX/install.sh" >/dev/null 2>"$h.err" </dev/null; then
+    echo "FAIL  as root into $open: refused a folder an earlier installer used"; sed 's/^/      /' "$h.err"; fail=1
+  elif [ -x "$open/valar" ] && grep -q "warning: .*can be changed by an account other than root" "$h.err"; then
+    echo "ok    as root into a folder another account can change: installed, with the warning"
   else
-    echo "FAIL  as root into $open: refused without saying why"; sed 's/^/      /' "$h.err"; fail=1
+    echo "FAIL  as root into $open: no copy, or no warning"; sed 's/^/      /' "$h.err"; fail=1
   fi
   sudo rm -rf "$open" "$h.err"
 fi

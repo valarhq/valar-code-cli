@@ -75,11 +75,15 @@ root_only() {
     d="$(dirname "$d")"
   done
 }
+# Where another account can write /usr/local/bin, /usr/local/bin/valar becomes a link to the copy in
+# /usr/local/valar/bin, so a script or a shell that names /usr/local/bin/valar still runs the new one.
+link=""
 if [ "$(id -u)" = 0 ] && [ -z "$PREFIX" ]; then
   if [ ! -e /usr/local/bin ] || root_only /usr/local/bin; then
     PREFIX=/usr/local/bin
   else
     PREFIX=/usr/local/valar/bin
+    link=/usr/local/bin/valar
   fi
 fi
 
@@ -199,9 +203,10 @@ fi
 
 # ---- install (always overwrites $PREFIX/valar with the resolved version) ----
 mkdir -p "$PREFIX"
+# A folder another account can change is installed into as asked, as before: a script may name it.
+# valar setup refuses to run from it as root, so the warning names the folder to use instead.
 if [ "$(id -u)" = 0 ] && ! root_only "$PREFIX"; then
-  echo "install.sh: $PREFIX, or a folder above it, can be changed by an account other than root, and root would run what it holds. Install to a folder only root can write: set VALAR_PREFIX, for example VALAR_PREFIX=/usr/local/valar/bin" >&2
-  exit 1
+  echo "install.sh: warning: $PREFIX, or a folder above it, can be changed by an account other than root, and root runs what it holds. valar setup refuses to run from it as root. Install to a folder only root can write: VALAR_PREFIX=/usr/local/valar/bin" >&2
 fi
 bin="$PREFIX/valar"
 prev=""
@@ -213,6 +218,10 @@ if [ -w "$PREFIX" ]; then
 else
   echo "==> $PREFIX is not writable; re-running install step with sudo"
   sudo install -m 0755 "$tmp/$TARGET" "$bin"
+fi
+if [ -n "$link" ]; then
+  ln -sfn "$bin" "$link"
+  echo "    link: $link -> $bin, so what names $link runs this copy"
 fi
 if [ -n "$prev" ] && [ "$prev" != "$VERSION" ]; then
   echo "    installed: $bin (replaced $prev -> $VERSION)"
