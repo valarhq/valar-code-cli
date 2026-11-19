@@ -33,18 +33,40 @@ run "VALAR_DOWNLOAD_URL=github"                 "$TAG" github VALAR_DOWNLOAD_URL
 older="$(gh release list --repo valarhq/valar-code-cli --limit 2 --json tagName --jq '.[1].tagName')"
 run "pinned to an older release: GitHub"        "$older" github VALAR_DOWNLOAD_URL="$URL/good/latest" VALAR_VERSION="$older"
 
-# As root (an MDM policy) the default is /usr/local/bin, and no shell profile is touched. CI only:
-# it writes /usr/local/bin.
+# As root (an MDM policy) the default is /usr/local/bin, or /usr/local/valar/bin where another account
+# owns /usr/local/bin, and no shell profile is touched. CI only: it writes /usr/local.
 if [ -n "${CI:-}" ] && sudo -n true 2>/dev/null; then
   h="$(mktemp -d)"
   out="$(sudo env HOME="$h" SHELL=/bin/zsh VALAR_DOWNLOAD_URL="$URL/good/latest" sh "$FIX/install.sh" 2>&1 </dev/null)"
-  got="$(/usr/local/bin/valar --version 2>/dev/null | awk '{print $NF}')"
-  if [ "$got" = "$TAG" ] && [ -z "$(sudo ls -A "$h")" ]; then
-    echo "ok    as root: /usr/local/bin, no shell profile"
+  bin="$(echo "$out" | sed -n 's/^ *installed: \([^ ]*\).*/\1/p')"
+  got="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
+  owner="$(ls -ldn "$(dirname "$bin")" | awk '{print $3}')"
+  if [ "$got" = "$TAG" ] && [ "$owner" = 0 ] && [ -z "$(sudo ls -A "$h")" ]; then
+    echo "ok    as root: $bin, a folder only root can write, no shell profile"
   else
-    echo "FAIL  as root: got '$got' in /usr/local/bin, home holds '$(sudo ls -A "$h")'"; echo "$out" | sed 's/^/      /'; fail=1
+    echo "FAIL  as root: got '$got' in '$bin' (folder owner $owner), home holds '$(sudo ls -A "$h")'"; echo "$out" | sed 's/^/      /'; fail=1
   fi
-  sudo rm -rf "$h" /usr/local/bin/valar
+  # Where it fell back to /usr/local/valar/bin, /usr/local/bin/valar is a link that runs the same copy.
+  if echo "$out" | grep -q "^ *link: /usr/local/bin/valar"; then
+    if [ "$(/usr/local/bin/valar --version 2>/dev/null | awk '{print $NF}')" = "$TAG" ]; then
+      echo "ok    as root: /usr/local/bin/valar runs the copy in $bin"
+    else
+      echo "FAIL  as root: /usr/local/bin/valar does not run $bin"; fail=1
+    fi
+    sudo rm -f /usr/local/bin/valar
+  fi
+  sudo rm -rf "$h" "$bin"
+  # A folder another account can write is installed into as asked, as before (a script may name
+  # it), with a warning naming the folder valar setup needs.
+  open="$(mktemp -d)/bin"
+  if ! sudo env VALAR_PREFIX="$open" VALAR_DOWNLOAD_URL="$URL/good/latest" sh "$FIX/install.sh" >/dev/null 2>"$h.err" </dev/null; then
+    echo "FAIL  as root into $open: refused a folder an earlier installer used"; sed 's/^/      /' "$h.err"; fail=1
+  elif [ -x "$open/valar" ] && grep -q "warning: .*can be changed by an account other than root" "$h.err"; then
+    echo "ok    as root into a folder another account can change: installed, with the warning"
+  else
+    echo "FAIL  as root into $open: no copy, or no warning"; sed 's/^/      /' "$h.err"; fail=1
+  fi
+  sudo rm -rf "$open" "$h.err"
 fi
 
 # The hand-over to `valar setup`, against the stub. "tty" runs the installer as `curl … | sh` runs
