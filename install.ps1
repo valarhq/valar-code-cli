@@ -37,7 +37,15 @@
   # PATH, writable by administrators only, where `valar setup` run as SYSTEM accepts it. SYSTEM's own
   # profile is no user's to run valar from.
   $system = [Security.Principal.WindowsIdentity]::GetCurrent().IsSystem
-  $prefix = if ($env:VALAR_PREFIX) { $env:VALAR_PREFIX } elseif ($system) { Join-Path $env:ProgramFiles 'Valar' } else { Join-Path $env:USERPROFILE '.local\bin' }
+  # A valar an earlier rollout put on the machine PATH under Program Files is upgraded where it is,
+  # so the machine never holds two copies at once.
+  $machineCopy = if ($system -and -not $env:VALAR_PREFIX) {
+    [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';' |
+      ForEach-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') } |
+      Where-Object { $_ -and $_.StartsWith($env:ProgramFiles, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path (Join-Path $_ 'valar.exe')) } |
+      Select-Object -First 1
+  }
+  $prefix = if ($env:VALAR_PREFIX) { $env:VALAR_PREFIX } elseif ($machineCopy) { $machineCopy } elseif ($system) { Join-Path $env:ProgramFiles 'Valar' } else { Join-Path $env:USERPROFILE '.local\bin' }
   $prefix = $prefix.TrimEnd('\')
   # From the environment, not [RuntimeInformation]::OSArchitecture: that .NET call can bind to
   # a facade and return null in Windows PowerShell 5.1. PROCESSOR_ARCHITEW6432 is set when an

@@ -24,7 +24,8 @@ At a terminal, the installer then runs `valar setup`, which signs you in and tur
 
 Install system-wide, as from an MDM policy: run as root, the installer puts `valar` in `/usr/local/bin`
 and changes no shell profile. On Windows, run as SYSTEM, it puts `valar.exe` in
-`C:\Program Files\Valar` and adds that folder to the machine PATH. Then run `valar setup` as root or
+`C:\Program Files\Valar` and adds that folder to the machine PATH; a `valar.exe` an earlier rollout
+put on the machine PATH under Program Files is upgraded where it is instead. Then run `valar setup` as root or
 SYSTEM with `VALAR_USER` naming the person to set up (on a Mac, the person at the screen when none is named).
 
 ```sh
