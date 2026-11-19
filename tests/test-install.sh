@@ -33,6 +33,20 @@ run "VALAR_DOWNLOAD_URL=github"                 "$TAG" github VALAR_DOWNLOAD_URL
 older="$(gh release list --repo valarhq/valar-code-cli --limit 2 --json tagName --jq '.[1].tagName')"
 run "pinned to an older release: GitHub"        "$older" github VALAR_DOWNLOAD_URL="$URL/good/latest" VALAR_VERSION="$older"
 
+# As root (an MDM policy) the default is /usr/local/bin, and no shell profile is touched. CI only:
+# it writes /usr/local/bin.
+if [ -n "${CI:-}" ] && sudo -n true 2>/dev/null; then
+  h="$(mktemp -d)"
+  out="$(sudo env HOME="$h" SHELL=/bin/zsh VALAR_DOWNLOAD_URL="$URL/good/latest" sh "$FIX/install.sh" 2>&1 </dev/null)"
+  got="$(/usr/local/bin/valar --version 2>/dev/null | awk '{print $NF}')"
+  if [ "$got" = "$TAG" ] && [ -z "$(sudo ls -A "$h")" ]; then
+    echo "ok    as root: /usr/local/bin, no shell profile"
+  else
+    echo "FAIL  as root: got '$got' in /usr/local/bin, home holds '$(sudo ls -A "$h")'"; echo "$out" | sed 's/^/      /'; fail=1
+  fi
+  sudo rm -rf "$h" /usr/local/bin/valar
+fi
+
 # The hand-over to `valar setup`, against the stub. "tty" runs the installer as `curl … | sh` runs
 # it at a terminal: its output a terminal, its input the piped script.
 STUB="$URL/stub/latest"

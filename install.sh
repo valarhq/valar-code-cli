@@ -18,8 +18,9 @@
 #   curl -fsSL -o install.sh https://raw.githubusercontent.com/valarhq/valar-code-cli/<commit-sha>/install.sh
 #   less install.sh && sh install.sh
 #
-# Install system-wide:
-#   sh install.sh --prefix /usr/local
+# Install system-wide (the default as root, as from an MDM policy, which also leaves every shell
+# profile alone):
+#   sudo sh install.sh            (installs to /usr/local/bin)
 #
 # Set up: at a terminal it then runs `valar setup --no-upgrade`, keeping the release it just
 # installed. VALAR_NO_SETUP=1 installs only.
@@ -36,7 +37,13 @@ set -eu
 
 REPO="valarhq/valar-code-cli"
 VERSION="${VALAR_VERSION:-}"
-PREFIX="${VALAR_PREFIX:-$HOME/.local/bin}"
+# As root (an MDM policy), the default is the machine-wide /usr/local/bin, on every user's PATH,
+# where `valar setup` run as root accepts it; root's own home is no one's to run valar from.
+if [ "$(id -u)" = 0 ]; then
+  PREFIX="${VALAR_PREFIX:-/usr/local/bin}"
+else
+  PREFIX="${VALAR_PREFIX:-$HOME/.local/bin}"
+fi
 TOKEN="${GITHUB_TOKEN:-}"
 HOSTED="${VALAR_DOWNLOAD_URL:-https://app.valarhq.ai/cli/latest}"
 HOSTED="${HOSTED%/}"
@@ -188,6 +195,10 @@ else
 fi
 
 # ---- PATH ----
+# As root no profile is changed: root's is no user's, and /usr/local/bin is on every user's PATH.
+if [ "$(id -u)" = 0 ]; then
+  echo "    path: run as root, so no shell profile was changed"
+else
 # Pick the rc file AND the line syntax for the user's login shell. fish uses a
 # different config location and its own PATH syntax (fish_add_path); the POSIX
 # `export PATH=...` line is silently ignored by fish.
@@ -212,6 +223,7 @@ else
   printf '\n# Added by valar install.sh\n%s\n' "$line" >> "$rc"
   echo "    path: added $PREFIX to PATH via $rc"
   echo "    run:  source $rc  (or open a new shell)"
+fi
 fi
 
 # ---- finish ----
