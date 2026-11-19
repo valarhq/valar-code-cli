@@ -37,10 +37,11 @@ set -eu
 
 REPO="valarhq/valar-code-cli"
 VERSION="${VALAR_VERSION:-}"
-# As root (an MDM policy), the default is the machine-wide /usr/local/bin, on every user's PATH,
-# where `valar setup` run as root accepts it; root's own home is no one's to run valar from.
+# As root (an MDM policy), the default is machine-wide: /usr/local/bin, on every user's PATH, where
+# `valar setup` run as root accepts it; root's own home is no one's to run valar from. Where another
+# account owns /usr/local/bin (Homebrew on an Intel Mac gives it to a person), /usr/local/valar/bin.
 if [ "$(id -u)" = 0 ]; then
-  PREFIX="${VALAR_PREFIX:-/usr/local/bin}"
+  PREFIX="${VALAR_PREFIX:-}"
 else
   PREFIX="${VALAR_PREFIX:-$HOME/.local/bin}"
 fi
@@ -58,6 +59,29 @@ while [ $# -gt 0 ]; do
     *) echo "install.sh: unknown argument: $1" >&2; usage 1 ;;
   esac
 done
+
+# root_only DIR: DIR and every folder above it are directories owned by root that no other account
+# can write. Root runs what it installs (and an MDM runs `valar setup` from there): a folder another
+# account can change would let that account choose what root runs.
+root_only() {
+  d="$1"
+  while :; do
+    [ -d "$d" ] && [ ! -L "$d" ] || return 1
+    # shellcheck disable=SC2046 # the fields of one ls line
+    set -- $(ls -ldn "$d")
+    [ "$3" = 0 ] || return 1
+    case "$1" in ?????w*|????????w*) return 1 ;; esac
+    [ "$d" = / ] && return 0
+    d="$(dirname "$d")"
+  done
+}
+if [ "$(id -u)" = 0 ] && [ -z "$PREFIX" ]; then
+  if [ ! -e /usr/local/bin ] || root_only /usr/local/bin; then
+    PREFIX=/usr/local/bin
+  else
+    PREFIX=/usr/local/valar/bin
+  fi
+fi
 
 # ---- detect OS + arch ----
 os="$(uname -s)"
@@ -175,6 +199,10 @@ fi
 
 # ---- install (always overwrites $PREFIX/valar with the resolved version) ----
 mkdir -p "$PREFIX"
+if [ "$(id -u)" = 0 ] && ! root_only "$PREFIX"; then
+  echo "install.sh: $PREFIX, or a folder above it, can be changed by an account other than root, and root would run what it holds. Install to a folder only root can write: set VALAR_PREFIX, for example VALAR_PREFIX=/usr/local/valar/bin" >&2
+  exit 1
+fi
 bin="$PREFIX/valar"
 prev=""
 if [ -x "$bin" ]; then
@@ -195,9 +223,24 @@ else
 fi
 
 # ---- PATH ----
-# As root no profile is changed: root's is no user's, and /usr/local/bin is on every user's PATH.
+# As root no profile is changed: root's is no user's. /usr/local/bin is on every user's PATH; another
+# folder is added to it for every user, the system's way.
 if [ "$(id -u)" = 0 ]; then
-  echo "    path: run as root, so no shell profile was changed"
+  # shellcheck disable=SC2194 # which of the system's own PATH folders PREFIX is
+  case ":/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:" in
+    *":$PREFIX:"*) echo "    path: run as root, so no shell profile was changed" ;;
+    *)
+      if [ -d /etc/paths.d ]; then
+        echo "$PREFIX" > /etc/paths.d/valar
+        echo "    path: added $PREFIX to every user's PATH (/etc/paths.d/valar; new terminals pick it up)"
+      elif [ -d /etc/profile.d ]; then
+        # shellcheck disable=SC2016 # $PATH is the login shell's, expanded there
+        printf 'case ":$PATH:" in *":%s:"*) ;; *) PATH="$PATH:%s" ;; esac\n' "$PREFIX" "$PREFIX" > /etc/profile.d/valar.sh
+        echo "    path: added $PREFIX to every user's PATH (/etc/profile.d/valar.sh; new logins pick it up)"
+      else
+        echo "    path: add $PREFIX to every user's PATH"
+      fi ;;
+  esac
 else
 # Pick the rc file AND the line syntax for the user's login shell. fish uses a
 # different config location and its own PATH syntax (fish_add_path); the POSIX
