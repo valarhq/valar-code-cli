@@ -26,7 +26,8 @@ function Run-Case([string]$name, [string]$want, [string]$src, [hashtable]$envs, 
   if (Test-Path $exe) { $got = ((& $exe --version 2>$null) -join '').Trim().Split(' ')[-1] }
   $ok = ($got -eq $want)
   $checkmark = [char]0x2713
-  foreach ($line in @('Downloading valar for windows-', "$checkmark Checksum verified", "$checkmark Installed valar to ", 'and added it to your PATH')) {
+  if ($out -notmatch "(?m)^$checkmark Installed valar\r?$") { $ok = $false }
+  foreach ($line in @('Downloading valar for windows-', "$checkmark Checksum verified")) {
     if (-not $out.Contains($line)) { $ok = $false }
   }
   if ($out.Contains('sha256: OK') -or $out.Contains('cosign: skipped')) { $ok = $false }

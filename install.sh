@@ -185,9 +185,7 @@ fi
 
 # ---- PATH ----
 # As root no profile is changed: root's is no user's, and /usr/local/bin is on every user's PATH.
-if [ "$(id -u)" = 0 ]; then
-  pathnote=" (run as root, so no shell profile was changed)"
-else
+if [ "$(id -u)" != 0 ]; then
 # Pick the rc file AND the line syntax for the user's login shell. fish uses a
 # different config location and its own PATH syntax (fish_add_path); the POSIX
 # `export PATH=...` line is silently ignored by fish.
@@ -206,18 +204,13 @@ case "$SHELL" in
     line="export PATH=\"$PREFIX:\$PATH\"" ;;
 esac
 mkdir -p "$(dirname "$rc")"
-if [ -f "$rc" ] && grep -qxF "$line" "$rc"; then
-  pathnote=" (already on your PATH)"
-else
+if [ ! -f "$rc" ] || ! grep -qxF "$line" "$rc"; then
   printf '\n# Added by valar install.sh\n%s\n' "$line" >> "$rc"
-  pathnote=" and added it to your PATH"
 fi
 fi
 
-# One line for the result: where valar went, and what happened to PATH.
-disp="$PREFIX"
-case "$disp" in "$HOME"/*) disp="~/${disp#"$HOME"/}" ;; esac
-echo "✓ Installed valar to $disp$pathnote"
+# One line for the installation result.
+echo "✓ Installed valar"
 
 # ---- finish ----
 echo

@@ -197,14 +197,12 @@
     $userPath = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     $kind = if ($userPath) { $key.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }
     $present = ($userPath -split ';' | ForEach-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') }) -contains $prefix
-    $pathnote = " (already on $(if ($system) { 'the machine' } else { 'your' }) PATH)"
     if (-not $present) {
       $key.SetValue('Path', (($userPath.TrimEnd(';') + ";$prefix").TrimStart(';')), $kind)
       # Registry writes do not notify running shells; a user-scope set/delete through .NET does
       # (WM_SETTINGCHANGE), so touch a scratch variable to broadcast.
       [Environment]::SetEnvironmentVariable('VALAR_INSTALL_PATH_UPDATED', '1', $scope)
       [Environment]::SetEnvironmentVariable('VALAR_INSTALL_PATH_UPDATED', $null, $scope)
-      $pathnote = " and added it to $(if ($system) { 'the machine' } else { 'your' }) PATH"
     }
   } finally {
     $key.Close()
@@ -220,9 +218,7 @@
   if (-not $new_version) {
     Write-Warning "install.ps1: $bin is in place but did not run cleanly; try 'valar --version' from a new shell"
   } else {
-    $disp = $prefix
-    if ($disp.StartsWith("$env:USERPROFILE\", [StringComparison]::OrdinalIgnoreCase)) { $disp = '~\' + $disp.Substring($env:USERPROFILE.Length + 1) }
-    Write-Host "$checkmark Installed valar to $disp$pathnote"
+    Write-Host "$checkmark Installed valar"
   }
   $onPath = Get-Command valar -ErrorAction SilentlyContinue
   if ($onPath -and $onPath.Source -and ($onPath.Source -ne $bin)) {
