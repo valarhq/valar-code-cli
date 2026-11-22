@@ -19,6 +19,7 @@ run() { # run <name> <expect version> <expect source: hosted|github> <env...>
   case "$out" in *"Downloading valar for "*) ;; *) ok=0 ;; esac
   case "$out" in *"✓ Checksum verified"*) ;; *) ok=0 ;; esac
   printf '%s\n' "$out" | grep -qxF '✓ Installed valar' || ok=0
+  if printf '%s\n' "$out" | grep -qE '^==> valar .* installed$'; then ok=0; fi
   case "$out" in *"sha256: OK"*|*"cosign: skipped"*|*"run:  source"*) ok=0 ;; esac
   case "$src" in
     hosted) case "$out" in *"(GitHub)"*) ok=0 ;; esac ;;

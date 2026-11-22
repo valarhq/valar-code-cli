@@ -214,9 +214,7 @@ echo "✓ Installed valar"
 
 # ---- finish ----
 echo
-if "$bin" --version >/dev/null 2>&1; then
-  echo "==> $($bin --version) installed"
-else
+if ! "$bin" --version >/dev/null 2>&1; then
   echo "==> valar installed (run 'valar --version' from a new shell)"
 fi
 
