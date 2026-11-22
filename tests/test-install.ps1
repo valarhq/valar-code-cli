@@ -25,8 +25,13 @@ function Run-Case([string]$name, [string]$want, [string]$src, [hashtable]$envs, 
   $exe = Join-Path $env:VALAR_PREFIX 'valar.exe'
   if (Test-Path $exe) { $got = ((& $exe --version 2>$null) -join '').Trim().Split(' ')[-1] }
   $ok = ($got -eq $want)
-  if ($src -eq 'hosted' -and $out -match '\(from GitHub\)') { $ok = $false }
-  if ($src -eq 'github' -and $out -notmatch '\(from GitHub\)') { $ok = $false }
+  $checkmark = [char]0x2713
+  foreach ($line in @('Downloading valar for windows-', "$checkmark Checksum verified", "$checkmark Installed valar to ", 'and added it to your PATH')) {
+    if (-not $out.Contains($line)) { $ok = $false }
+  }
+  if ($out.Contains('sha256: OK') -or $out.Contains('cosign: skipped')) { $ok = $false }
+  if ($src -eq 'hosted' -and $out -match '\(GitHub\)') { $ok = $false }
+  if ($src -eq 'github' -and $out -notmatch '\(GitHub\)') { $ok = $false }
   if ($wantOut.StartsWith('!')) {
     if ($out.Contains($wantOut.Substring(1))) { $ok = $false }
   } elseif ($wantOut -and -not $out.Contains($wantOut)) { $ok = $false }

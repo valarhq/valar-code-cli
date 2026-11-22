@@ -16,9 +16,13 @@ run() { # run <name> <expect version> <expect source: hosted|github> <env...>
   got="$("$h/bin/valar" --version 2>/dev/null | awk '{print $NF}')"
   local ok=1
   [ "$got" = "$want" ] || ok=0
+  case "$out" in *"Downloading valar for "*) ;; *) ok=0 ;; esac
+  case "$out" in *"✓ Checksum verified"*) ;; *) ok=0 ;; esac
+  case "$out" in *"✓ Installed valar to ~/bin and added it to your PATH"*) ;; *) ok=0 ;; esac
+  case "$out" in *"sha256: OK"*|*"cosign: skipped"*|*"run:  source"*) ok=0 ;; esac
   case "$src" in
-    hosted) case "$out" in *"(from GitHub)"*) ok=0 ;; esac ;;
-    github) case "$out" in *"(from GitHub)"*) ;; *) ok=0 ;; esac ;;
+    hosted) case "$out" in *"(GitHub)"*) ok=0 ;; esac ;;
+    github) case "$out" in *"(GitHub)"*) ;; *) ok=0 ;; esac ;;
   esac
   if [ "$ok" = 1 ]; then echo "ok    $name ($got from $src)"; else echo "FAIL  $name: got '$got', want '$want' from $src"; echo "$out" | sed 's/^/      /'; fail=1; fi
   rm -rf "$h"
@@ -74,9 +78,9 @@ setup_case() { # setup_case <name> <tty|log> <want exit> <want setup args, or - 
   rm -rf "$h"
 }
 
-setup_case "at a terminal: valar setup, on the terminal"  tty 0 "setup --no-upgrade" "installed"
-setup_case "pinned at a terminal: --no-upgrade"           tty 0 "setup --no-upgrade" "installed"  VALAR_VERSION=valar-cli-v0.0.0-stub
-setup_case "valar setup fails: the installer exits 1"     tty 1 "setup --no-upgrade" "installed"  STUB_SETUP_EXIT=1
+setup_case "at a terminal: valar setup, on the terminal"  tty 0 "setup --no-upgrade" "Installed"
+setup_case "pinned at a terminal: --no-upgrade"           tty 0 "setup --no-upgrade" "Installed"  VALAR_VERSION=valar-cli-v0.0.0-stub
+setup_case "valar setup fails: the installer exits 1"     tty 1 "setup --no-upgrade" "Installed"  STUB_SETUP_EXIT=1
 setup_case "VALAR_NO_SETUP=1: installs only"              tty 0 "-"                  "next: valar setup" VALAR_NO_SETUP=1
 setup_case "output to a log: installs only"               log 0 "-"                  "next: valar setup"
 setup_case "a release without setup: as before"          tty 0 "-"                  "next: valar help" STUB_NO_SETUP=1

@@ -121,7 +121,7 @@ fetch() {
     echo "    SHA256 verification FAILED for $TARGET" >&2
     return 1
   fi
-  echo "    sha256: OK"
+  echo "✓ Checksum verified"
 
   # ---- verify cosign signature (optional) ----
   if command -v cosign >/dev/null 2>&1 \
@@ -132,13 +132,13 @@ fetch() {
           --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
           --bundle "$tmp/checksums.txt.bundle" \
           "$tmp/checksums.txt" >/dev/null 2>&1; then
-      echo "    cosign: OK (provenance verified)"
+      echo "✓ Provenance verified"
     else
       echo "    cosign signature verification FAILED" >&2
       return 1
     fi
   else
-    echo "    cosign: skipped (install cosign to verify provenance; see SECURITY.md)"
+    : # no cosign: nothing to say; the checksum line already covers integrity
   fi
 }
 
@@ -151,7 +151,7 @@ if [ "$HOSTED" != "github" ]; then
     | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1 || true)"
   if [ -n "$hosted_version" ] && { [ -z "$VERSION" ] || [ "$VERSION" = "$hosted_version" ]; }; then
     VERSION="$hosted_version"
-    echo "==> valar $VERSION for $TARGET"
+    echo "Downloading valar for ${os}-${arch}…"
     if fetch "$HOSTED" "$VERSION" curl_hosted; then
       fetched=1
     else
@@ -168,7 +168,7 @@ if [ -z "$fetched" ]; then
     echo "install.sh: could not resolve a release version (set VALAR_VERSION or GITHUB_TOKEN)" >&2
     exit 1
   fi
-  echo "==> valar $VERSION for $TARGET (from GitHub)"
+  echo "Downloading valar for ${os}-${arch}… (GitHub)"
   fetch "https://github.com/$REPO/releases/download/$VERSION" "$VERSION" curl_auth \
     || { echo "install.sh: could not download and verify valar $VERSION" >&2; exit 1; }
 fi
@@ -176,28 +176,17 @@ fi
 # ---- install (always overwrites $PREFIX/valar with the resolved version) ----
 mkdir -p "$PREFIX"
 bin="$PREFIX/valar"
-prev=""
-if [ -x "$bin" ]; then
-  prev="$("$bin" --version 2>/dev/null | awk '{print $NF}')"
-fi
 if [ -w "$PREFIX" ]; then
   install -m 0755 "$tmp/$TARGET" "$bin"
 else
   echo "==> $PREFIX is not writable; re-running install step with sudo"
   sudo install -m 0755 "$tmp/$TARGET" "$bin"
 fi
-if [ -n "$prev" ] && [ "$prev" != "$VERSION" ]; then
-  echo "    installed: $bin (replaced $prev -> $VERSION)"
-elif [ -n "$prev" ]; then
-  echo "    installed: $bin (reinstalled $VERSION)"
-else
-  echo "    installed: $bin"
-fi
 
 # ---- PATH ----
 # As root no profile is changed: root's is no user's, and /usr/local/bin is on every user's PATH.
 if [ "$(id -u)" = 0 ]; then
-  echo "    path: run as root, so no shell profile was changed"
+  pathnote=" (run as root, so no shell profile was changed)"
 else
 # Pick the rc file AND the line syntax for the user's login shell. fish uses a
 # different config location and its own PATH syntax (fish_add_path); the POSIX
@@ -218,13 +207,17 @@ case "$SHELL" in
 esac
 mkdir -p "$(dirname "$rc")"
 if [ -f "$rc" ] && grep -qxF "$line" "$rc"; then
-  echo "    path: $PREFIX already on PATH via $rc"
+  pathnote=" (already on your PATH)"
 else
   printf '\n# Added by valar install.sh\n%s\n' "$line" >> "$rc"
-  echo "    path: added $PREFIX to PATH via $rc"
-  echo "    run:  source $rc  (or open a new shell)"
+  pathnote=" and added it to your PATH"
 fi
 fi
+
+# One line for the result: where valar went, and what happened to PATH.
+disp="$PREFIX"
+case "$disp" in "$HOME"/*) disp="~/${disp#"$HOME"/}" ;; esac
+echo "✓ Installed valar to $disp$pathnote"
 
 # ---- finish ----
 echo

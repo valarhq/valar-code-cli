@@ -28,6 +28,9 @@
   $ErrorActionPreference = 'Stop'
   # The progress bar makes Invoke-WebRequest an order of magnitude slower on PowerShell 5.1.
   $ProgressPreference = 'SilentlyContinue'
+  # Character codes also work when PowerShell 5.1 reads this file without a UTF-8 BOM.
+  $checkmark = [char]0x2713
+  $ellipsis = [char]0x2026
   # Windows PowerShell 5.1 still defaults to TLS 1.0, which GitHub refuses. OR the bit in so a
   # newer protocol already enabled in this process stays enabled.
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
@@ -91,7 +94,7 @@
       $bin_tmp = Get-Asset $asset
       $got = (Get-FileHash $bin_tmp -Algorithm SHA256).Hash.ToLower()
       if ($got -ne $want) { throw "SHA256 verification FAILED for $asset (want $want, got $got)" }
-      Write-Host "    sha256: OK"
+      Write-Host "$checkmark Checksum verified"
 
       # ---- verify cosign signature (optional) ----
       $bundle = $null
@@ -108,9 +111,7 @@
         $cosignRc = $LASTEXITCODE
         $ErrorActionPreference = $prev
         if ($cosignRc -ne 0) { throw "cosign signature verification FAILED`n$($cosignOut -join "`n")" }
-        Write-Host "    cosign: OK (provenance verified)"
-      } else {
-        Write-Host "    cosign: skipped (install cosign to verify provenance; see SECURITY.md)"
+        Write-Host "$checkmark Provenance verified"
       }
       return $bin_tmp
     }
@@ -125,7 +126,7 @@
       try { $hostedVersion = (Invoke-RestMethod "$hosted/release.json" -UseBasicParsing).tag_name } catch { }
       if ($hostedVersion -and ((-not $version) -or $version -eq $hostedVersion)) {
         $version = $hostedVersion
-        Write-Host "==> valar $version for windows/$arch"
+        Write-Host "Downloading valar for windows-$($arch)$ellipsis"
         try {
           $bin_tmp = Get-Verified $hosted $version
         } catch {
@@ -144,7 +145,7 @@
           throw "install.ps1: could not resolve a release version ($($_.Exception.Message)); set VALAR_VERSION, or GITHUB_TOKEN to lift the API rate limit"
         }
       }
-      Write-Host "==> valar $version for windows/$arch (from GitHub)"
+      Write-Host "Downloading valar for windows-$($arch)$ellipsis (GitHub)"
       # Release downloads are unmetered, unlike the API (install.sh uses the same URLs).
       try {
         $bin_tmp = Get-Verified "https://github.com/$repo/releases/download/$version" $version
@@ -156,7 +157,6 @@
     # ---- install (always overwrites $prefix\valar.exe with the resolved version) ----
     New-Item -ItemType Directory -Force $prefix | Out-Null
     $bin = Join-Path $prefix 'valar.exe'
-    $prev_version = if (Test-Path $bin) { try { (& $bin --version 2>$null) -join '' } catch { '' } } else { '' }
     # Stage next to the destination so the final rename never crosses volumes.
     $staged = "$bin.new"
     Move-Item $bin_tmp $staged -Force
@@ -197,13 +197,14 @@
     $userPath = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
     $kind = if ($userPath) { $key.GetValueKind('Path') } else { [Microsoft.Win32.RegistryValueKind]::ExpandString }
     $present = ($userPath -split ';' | ForEach-Object { [Environment]::ExpandEnvironmentVariables($_).TrimEnd('\') }) -contains $prefix
+    $pathnote = " (already on $(if ($system) { 'the machine' } else { 'your' }) PATH)"
     if (-not $present) {
       $key.SetValue('Path', (($userPath.TrimEnd(';') + ";$prefix").TrimStart(';')), $kind)
       # Registry writes do not notify running shells; a user-scope set/delete through .NET does
       # (WM_SETTINGCHANGE), so touch a scratch variable to broadcast.
       [Environment]::SetEnvironmentVariable('VALAR_INSTALL_PATH_UPDATED', '1', $scope)
       [Environment]::SetEnvironmentVariable('VALAR_INSTALL_PATH_UPDATED', $null, $scope)
-      Write-Host "    added $prefix to the $($scope.ToLower()) PATH (new terminals pick it up)"
+      $pathnote = " and added it to $(if ($system) { 'the machine' } else { 'your' }) PATH"
     }
   } finally {
     $key.Close()
@@ -218,10 +219,10 @@
   } catch { $new_version = '' }
   if (-not $new_version) {
     Write-Warning "install.ps1: $bin is in place but did not run cleanly; try 'valar --version' from a new shell"
-  } elseif ($prev_version -and $prev_version -ne $new_version) {
-    Write-Host "    installed: $bin (replaced $prev_version -> $new_version)"
   } else {
-    Write-Host "    installed: $bin ($new_version)"
+    $disp = $prefix
+    if ($disp.StartsWith("$env:USERPROFILE\", [StringComparison]::OrdinalIgnoreCase)) { $disp = '~\' + $disp.Substring($env:USERPROFILE.Length + 1) }
+    Write-Host "$checkmark Installed valar to $disp$pathnote"
   }
   $onPath = Get-Command valar -ErrorAction SilentlyContinue
   if ($onPath -and $onPath.Source -and ($onPath.Source -ne $bin)) {
