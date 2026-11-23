@@ -210,16 +210,22 @@
   if (($env:Path -split ';' | ForEach-Object { $_.TrimEnd('\') }) -notcontains $prefix) { $env:Path += ";$prefix" }
 
   # ---- report ----
+  # A valar.exe that does not run is a failed install, never a warning: a deployment tool reads the
+  # exit code alone, and an antivirus that took the new file, or an App Control or AppLocker policy
+  # that refuses this folder, leaves nothing that works.
   $new_version = ''
+  $runError = ''
   try {
     $new_version = (& $bin --version 2>&1) -join ''
-    if ($LASTEXITCODE -ne 0) { $new_version = '' }
-  } catch { $new_version = '' }
+    if ($LASTEXITCODE -ne 0) { $runError = "it exited $LASTEXITCODE"; $new_version = '' }
+  } catch { $new_version = ''; $runError = $_.Exception.Message }
   if (-not $new_version) {
-    Write-Warning "install.ps1: $bin is in place but did not run cleanly; try 'valar --version' from a new shell"
-  } else {
-    Write-Host "$checkmark Installed valar"
+    if (-not (Test-Path -LiteralPath $bin)) {
+      throw "install.ps1: $bin was removed right after it was installed, most likely by antivirus (Microsoft Defender quarantines a new program it does not know). Allow it there and run this again, or install valar with its Windows package (the MSI)."
+    }
+    throw "install.ps1: $bin is in place but does not run ($runError). An App Control for Business or AppLocker policy that does not allow $prefix refuses it this way: install valar with its Windows package (the MSI), which runs from Program Files, or ask your administrator."
   }
+  Write-Host "$checkmark Installed valar"
   $onPath = Get-Command valar -ErrorAction SilentlyContinue
   if ($onPath -and $onPath.Source -and ($onPath.Source -ne $bin)) {
     Write-Warning "install.ps1: 'valar' on your PATH resolves to $($onPath.Source), not $bin - the earlier entry shadows this install; remove it or put $prefix first"
