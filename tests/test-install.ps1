@@ -66,4 +66,6 @@ try { $out = (& { Invoke-RestMethod "$url/install.ps1" | Invoke-Expression } *>&
 if ($out -match 'THREW: install\.ps1: .*does not run' -and $out -notmatch 'Installed valar') { Write-Host "ok    a valar.exe that does not run fails the install" } else { Write-Host "FAIL  a valar.exe that does not run:`n$out"; $script:fail = $true }
 foreach ($k in @('VALAR_PREFIX', 'VALAR_DOWNLOAD_URL', 'STUB_VERSION_EXIT')) { [Environment]::SetEnvironmentVariable($k, $null) }
 Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+# The stand-in's failed --version is the last native exit code, which the runner would report as this script's.
+$global:LASTEXITCODE = 0
 if ($script:fail) { exit 1 }
