@@ -12,7 +12,7 @@ $script:fail = $false
 function Run-Case([string]$name, [string]$want, [string]$src, [hashtable]$envs, [string]$wantOut = '') {
   $dir = Join-Path ([IO.Path]::GetTempPath()) ("valar-t-" + [guid]::NewGuid().ToString('N'))
   $saved = @{}
-  foreach ($k in @('VALAR_DOWNLOAD_URL', 'VALAR_VERSION', 'VALAR_PREFIX', 'VALAR_NO_SETUP', 'STUB_NO_SETUP')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $null) }
+  foreach ($k in @('VALAR_DOWNLOAD_URL', 'VALAR_VERSION', 'VALAR_PREFIX', 'VALAR_NO_SETUP', 'STUB_NO_SETUP', 'STUB_VERSION_EXIT')) { $saved[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $null) }
   $env:VALAR_PREFIX = Join-Path $dir 'bin'
   foreach ($k in $envs.Keys) { [Environment]::SetEnvironmentVariable($k, $envs[$k]) }
   $out = ''
@@ -57,4 +57,13 @@ $stub = 'valar-cli-v0.0.0-stub'
 Run-Case 'no console: installs only'                  $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest" } 'next: valar setup'
 Run-Case 'VALAR_NO_SETUP=1: installs only'            $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest"; VALAR_NO_SETUP = '1' } 'next: valar setup'
 Run-Case 'a release without setup: as before'         $stub hosted @{ VALAR_DOWNLOAD_URL = "$url/stub/latest"; STUB_NO_SETUP = '1' } '!next:'
+# A valar.exe that does not run once installed (a policy refuses it, or antivirus takes it) fails the
+# install: a deployment tool reads the exit code alone.
+$dir = Join-Path ([IO.Path]::GetTempPath()) ("valar-t-" + [guid]::NewGuid().ToString('N'))
+$env:VALAR_PREFIX = Join-Path $dir 'bin'; $env:VALAR_DOWNLOAD_URL = "$url/stub/latest"; $env:STUB_VERSION_EXIT = '1'
+$out = ''
+try { $out = (& { Invoke-RestMethod "$url/install.ps1" | Invoke-Expression } *>&1 | Out-String) } catch { $out += "THREW: $($_.Exception.Message)" }
+if ($out -match 'THREW: install\.ps1: .*does not run' -and $out -notmatch 'Installed valar') { Write-Host "ok    a valar.exe that does not run fails the install" } else { Write-Host "FAIL  a valar.exe that does not run:`n$out"; $script:fail = $true }
+foreach ($k in @('VALAR_PREFIX', 'VALAR_DOWNLOAD_URL', 'STUB_VERSION_EXIT')) { [Environment]::SetEnvironmentVariable($k, $null) }
+Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
 if ($script:fail) { exit 1 }

@@ -1,6 +1,6 @@
 // A stand-in valar for the installer tests, which tests/prepare.sh builds for every target.
 // `valar setup` writes how it ran to $STUB_LOG and exits $STUB_SETUP_EXIT; with STUB_NO_SETUP=1
-// it is a release without `setup`.
+// it is a release without `setup`; with STUB_VERSION_EXIT set, `valar --version` fails with it.
 package main
 
 import (
@@ -18,6 +18,11 @@ func main() {
 	}
 	switch args[0] {
 	case "--version":
+		// STUB_VERSION_EXIT stands in for a valar.exe that a policy or an antivirus refuses to run.
+		if code, _ := strconv.Atoi(os.Getenv("STUB_VERSION_EXIT")); code != 0 {
+			fmt.Fprintln(os.Stderr, "This program is blocked by group policy.")
+			os.Exit(code)
+		}
 		fmt.Println("valar valar-cli-v0.0.0-stub")
 	case "setup":
 		if slices.Contains(args, "--help") {
